@@ -3,7 +3,7 @@
   "productName": "DryPrompt",
   "version": "1.0.0",
   "description": "AI-powered desktop application that learns your typing habits and automates repetitive prompts",
-  "main": ".vite/build/main.js",
+  "main": ".vite/build/index.js",
   "scripts": {
     "dev": "electron-forge start",
     "start": "electron-forge start",
