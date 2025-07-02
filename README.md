@@ -14,17 +14,22 @@ DryPrompt is a macOS desktop application that runs silently in the background, m
 - [x] Build system and development environment configured
 - [x] Version control setup with Git
 
-### 🚧 Phase 2: Precision Monitoring Engine (Next)
-- [ ] Process monitor for Cursor.app
-- [ ] Active window monitoring
-- [ ] Keyboard input capture (with Accessibility permissions)
-- [ ] Secure local data storage
+### ✅ Phase 2: Minimum Viable Product (COMPLETED)
+- [x] Configuration UI & IPC with secure keychain storage
+- [x] Precision monitoring engine (uiohook-napi + active-win)
+- [x] AI workflow implementation with LangGraph.js
+- [x] Proper DBSCAN clustering using density-clustering library
+- [x] OpenAI API integration for embeddings and synthesis
+- [x] Supabase database integration for persistence
+- [x] Native macOS notifications with AppleScript integration
+- [x] Manual "Analyze Now" trigger in menu bar
 
-### 🔄 Phase 3: AI Workflow Implementation
-- [ ] LangGraph.js workflow setup
-- [ ] OpenAI API integration for embeddings and clustering
-- [ ] ml-js DBSCAN clustering implementation
-- [ ] Supabase database integration
+### 🔄 Phase 3: Enhanced Features & Polish (Next)
+- [ ] Automatic hourly analysis scheduling
+- [ ] Advanced monitoring controls and settings
+- [ ] Enhanced error handling and recovery
+- [ ] Performance optimizations
+- [ ] User analytics and feedback dashboard
 
 ## Development
 
@@ -33,6 +38,7 @@ DryPrompt is a macOS desktop application that runs silently in the background, m
 - macOS (required for system integrations)
 - OpenAI API key (stored in `.env`)
 - Supabase project credentials (stored in `.env`)
+- Supabase database tables set up (see `SUPABASE_SETUP.md`)
 
 ### Running the Application
 
@@ -50,14 +56,14 @@ DryPrompt is a macOS desktop application that runs silently in the background, m
 
 ### Optional: Enhanced Keyboard Capture
 
-For full keyboard capture functionality, you can install the optional `iohook` dependency:
+For full keyboard capture functionality, you can install the optional `uiohook-napi` dependency:
 
 ```bash
-npm install iohook
+npm install uiohook-napi
 npm run electron-rebuild  # May be needed for your Electron version
 ```
 
-If `iohook` is not available, the app will automatically use fallback mode with simulated text capture for testing purposes. The core AI workflow and suggestion system will work in both modes.
+If `uiohook-napi` is not available, the app will automatically use fallback mode with simulated text capture for testing purposes. The core AI workflow and suggestion system will work in both modes.
 
 ### Building for Production
 
@@ -92,7 +98,7 @@ The application follows a secure, modular architecture:
 - **AI Models**: OpenAI GPT-4o and text-embedding-3-small
 - **Database**: Supabase
 - **System Integration**: Native macOS APIs via Node.js
-- **Clustering**: ml-js DBSCAN algorithm
+- **Clustering**: DBSCAN algorithm via density-clustering library
 
 ## License
 

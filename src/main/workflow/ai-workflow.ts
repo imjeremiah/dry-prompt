@@ -7,6 +7,7 @@ import { StateGraph, MemorySaver, START, END } from '@langchain/langgraph';
 import { OpenAI } from '@langchain/openai';
 import * as keychainService from '../services/keychain-service';
 import * as loggingService from '../services/logging-service';
+import * as supabaseService from '../services/supabase-service';
 import { embedTexts } from './embedding-node';
 import { clusterEmbeddings } from './clustering-node';
 import { synthesizeSuggestions } from './synthesis-node';
@@ -35,9 +36,56 @@ interface WorkflowState {
     replacement: string;
     sourceTexts: string[];
     confidence: number;
+    suggestionId?: string; // Supabase record ID
   }>;
   errors?: string[];
   stepResults?: Record<string, any>;
+  startTime?: number;
+  supabaseInitialized?: boolean;
+}
+
+/**
+ * Initializes Supabase connection and sets up start time tracking
+ * @param state - Current workflow state
+ * @returns Updated state with Supabase initialization status
+ */
+async function initializeWorkflowNode(state: WorkflowState): Promise<WorkflowState> {
+  console.log('Initializing AI workflow...');
+  
+  const startTime = Date.now();
+  
+  try {
+    // Initialize Supabase connection
+    const supabaseInitialized = await supabaseService.initializeSupabase();
+    
+    if (supabaseInitialized) {
+      console.log('Supabase connection established for this analysis');
+    } else {
+      console.log('Supabase not available, analysis will continue without persistence');
+    }
+    
+    return {
+      ...state,
+      startTime,
+      supabaseInitialized,
+      stepResults: {
+        ...state.stepResults,
+        initialization: { 
+          supabaseAvailable: supabaseInitialized,
+          startTime
+        }
+      }
+    };
+    
+  } catch (error) {
+    console.error('Error initializing workflow:', error);
+    return {
+      ...state,
+      startTime,
+      supabaseInitialized: false,
+      errors: [...(state.errors || []), `Failed to initialize workflow: ${error}`]
+    };
+  }
 }
 
 /**
@@ -166,7 +214,7 @@ async function clusteringNode(state: WorkflowState): Promise<WorkflowState> {
 }
 
 /**
- * Synthesizes suggestions from clusters using GPT
+ * Synthesizes suggestions from clusters using GPT and stores them in Supabase
  * @param state - Current workflow state
  * @returns Updated state with suggestions
  */
@@ -192,11 +240,31 @@ async function synthesisNode(state: WorkflowState): Promise<WorkflowState> {
     
     const rawSuggestions = await synthesizeSuggestions(state.clusters, apiKey);
     
-    // Generate triggers for each suggestion
-    const suggestions = rawSuggestions.map(suggestion => ({
-      ...suggestion,
-      trigger: generateShortcutTrigger(suggestion.replacement)
-    }));
+    // Generate triggers for each suggestion and store in Supabase
+    const suggestions = [];
+    
+    for (const rawSuggestion of rawSuggestions) {
+      const suggestion = {
+        ...rawSuggestion,
+        trigger: generateShortcutTrigger(rawSuggestion.replacement)
+      };
+      
+      // Store in Supabase if available
+      let suggestionId: string | undefined;
+      if (state.supabaseInitialized) {
+        suggestionId = await supabaseService.storeSuggestion({
+          trigger: suggestion.trigger,
+          replacement: suggestion.replacement,
+          sourceTexts: suggestion.sourceTexts,
+          confidence: suggestion.confidence
+        }) || undefined;
+      }
+      
+      suggestions.push({
+        ...suggestion,
+        suggestionId
+      });
+    }
     
     console.log(`Generated ${suggestions.length} suggestions`);
     
@@ -205,7 +273,10 @@ async function synthesisNode(state: WorkflowState): Promise<WorkflowState> {
       suggestions,
       stepResults: {
         ...state.stepResults,
-        synthesis: { suggestionCount: suggestions.length }
+        synthesis: { 
+          suggestionCount: suggestions.length,
+          storedInSupabase: suggestions.filter(s => s.suggestionId).length
+        }
       }
     };
     
@@ -214,6 +285,55 @@ async function synthesisNode(state: WorkflowState): Promise<WorkflowState> {
     return {
       ...state,
       errors: [...(state.errors || []), `Failed to synthesize suggestions: ${error}`]
+    };
+  }
+}
+
+/**
+ * Stores final analysis results in Supabase and completes the workflow
+ * @param state - Current workflow state
+ * @returns Updated state with final results
+ */
+async function storeResultsNode(state: WorkflowState): Promise<WorkflowState> {
+  console.log('Storing analysis results...');
+  
+  try {
+    const endTime = Date.now();
+    const processingTime = state.startTime ? endTime - state.startTime : 0;
+    
+    // Store analysis results if Supabase is available
+    if (state.supabaseInitialized) {
+      const success = await supabaseService.storeAnalysisResult({
+        totalPrompts: state.logEntries?.length || 0,
+        clustersFound: state.clusters?.length || 0,
+        suggestionsGenerated: state.suggestions?.length || 0,
+        processingTimeMs: processingTime
+      });
+      
+      if (success) {
+        console.log('Analysis results stored in Supabase successfully');
+      }
+    }
+    
+    return {
+      ...state,
+      stepResults: {
+        ...state.stepResults,
+        finalResults: {
+          totalPrompts: state.logEntries?.length || 0,
+          clustersFound: state.clusters?.length || 0,
+          suggestionsGenerated: state.suggestions?.length || 0,
+          processingTimeMs: processingTime,
+          storedInSupabase: state.supabaseInitialized
+        }
+      }
+    };
+    
+  } catch (error) {
+    console.error('Error storing analysis results:', error);
+    return {
+      ...state,
+      errors: [...(state.errors || []), `Failed to store analysis results: ${error}`]
     };
   }
 }
@@ -232,15 +352,17 @@ function routeWorkflow(state: WorkflowState): string {
     );
     
     if (hasCriticalError) {
-      return END;
+      return 'storeResults'; // Still store what we can before ending
     }
   }
   
   // Continue based on what data we have
+  if (!state.startTime) return 'initializeWorkflow';
   if (!state.logEntries) return 'loadLogEntries';
   if (!state.embeddings) return 'embedding';
   if (!state.clusters) return 'clustering';
   if (!state.suggestions) return 'synthesis';
+  if (!state.stepResults?.finalResults) return 'storeResults';
   
   return END;
 }
@@ -258,21 +380,27 @@ export function createWorkflowGraph(): StateGraph<WorkflowState> {
       suggestions: null,
       errors: null,
       stepResults: null,
+      startTime: null,
+      supabaseInitialized: null,
     }
   });
   
   // Add nodes to the workflow
+  workflow.addNode('initializeWorkflow', initializeWorkflowNode);
   workflow.addNode('loadLogEntries', loadLogEntriesNode);
   workflow.addNode('embedding', embeddingNode);
   workflow.addNode('clustering', clusteringNode);
   workflow.addNode('synthesis', synthesisNode);
+  workflow.addNode('storeResults', storeResultsNode);
   
   // Define the workflow edges
-  workflow.addEdge(START, 'loadLogEntries');
+  workflow.addEdge(START, 'initializeWorkflow');
+  workflow.addConditionalEdges('initializeWorkflow', routeWorkflow);
   workflow.addConditionalEdges('loadLogEntries', routeWorkflow);
   workflow.addConditionalEdges('embedding', routeWorkflow);
   workflow.addConditionalEdges('clustering', routeWorkflow);
   workflow.addConditionalEdges('synthesis', routeWorkflow);
+  workflow.addConditionalEdges('storeResults', routeWorkflow);
   
   return workflow;
 }

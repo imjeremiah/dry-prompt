@@ -6,17 +6,17 @@
 import activeWin from 'active-win';
 import * as loggingService from './logging-service';
 
-// Dynamically import iohook with error handling
-let iohook: any = null;
-let iohookAvailable = false;
+// Dynamically import uiohook-napi with error handling
+let uiohook: any = null;
+let uiohookAvailable = false;
 
 try {
-  iohook = require('iohook');
-  iohookAvailable = true;
-  console.log('iohook loaded successfully');
+  uiohook = require('uiohook-napi');
+  uiohookAvailable = true;
+  console.log('uiohook-napi loaded successfully');
 } catch (error) {
-  console.warn('iohook not available, keyboard capture will be disabled:', error);
-  iohookAvailable = false;
+  console.warn('uiohook-napi not available, keyboard capture will be disabled:', error);
+  uiohookAvailable = false;
 }
 
 // Monitoring state
@@ -175,8 +175,8 @@ async function enableTextCapture(): Promise<void> {
     return; // Already active
   }
 
-  if (!iohookAvailable) {
-    console.log('Keyboard capture not available (iohook not loaded), using fallback mode');
+  if (!uiohookAvailable) {
+    console.log('Keyboard capture not available (uiohook-napi not loaded), using fallback mode');
     await enableFallbackCapture();
     return;
   }
@@ -185,13 +185,13 @@ async function enableTextCapture(): Promise<void> {
     console.log('Enabling keyboard capture for target window');
     
     // Start the keyboard listener
-    iohook.start(false); // false = don't debug
+    uiohook.start();
     
     // Register keypress handler
-    iohook.on('keypress', handleKeypress);
+    uiohook.on('keypress', handleKeypress);
     
     // Register special key handlers
-    iohook.on('keydown', handleKeydown);
+    uiohook.on('keydown', handleKeydown);
     
     state.keyboardListenerActive = true;
     state.currentTextBuffer = '';
@@ -254,21 +254,21 @@ async function disableTextCapture(): Promise<void> {
     console.log('Disabling keyboard capture');
     
     // Process any remaining text in buffer before disabling (if using real capture)
-    if (iohookAvailable) {
+    if (uiohookAvailable) {
       await processTextBuffer();
     }
     
-    // Only try to cleanup iohook if it's available
-    if (iohookAvailable && iohook) {
+    // Only try to cleanup uiohook if it's available
+    if (uiohookAvailable && uiohook) {
       try {
         // Remove event listeners
-        iohook.removeAllListeners('keypress');
-        iohook.removeAllListeners('keydown');
+        uiohook.removeAllListeners('keypress');
+        uiohook.removeAllListeners('keydown');
         
         // Stop the keyboard listener
-        iohook.stop();
-      } catch (iohookError) {
-        console.warn('Error stopping iohook:', iohookError);
+        uiohook.stop();
+      } catch (uiohookError) {
+        console.warn('Error stopping uiohook-napi:', uiohookError);
       }
     }
     
@@ -286,16 +286,18 @@ async function disableTextCapture(): Promise<void> {
 }
 
 /**
- * Handles individual keypress events (only used when iohook is available)
- * @param event - The keypress event from iohook
+ * Handles individual keypress events (only used when uiohook-napi is available)
+ * @param event - The keypress event from uiohook-napi
  */
 function handleKeypress(event: any): void {
-  if (!iohookAvailable) return;
+  if (!uiohookAvailable) return;
   
   try {
     // Only capture printable characters
-    if (event.rawcode && event.rawcode >= 32 && event.rawcode <= 126) {
-      const char = String.fromCharCode(event.rawcode);
+    // uiohook-napi may use different property names, check for both
+    const keycode = event.keycode || event.rawcode;
+    if (keycode && keycode >= 32 && keycode <= 126) {
+      const char = String.fromCharCode(keycode);
       state.currentTextBuffer += char;
       state.lastKeypressTime = Date.now();
       
@@ -310,11 +312,11 @@ function handleKeypress(event: any): void {
 }
 
 /**
- * Handles special keydown events (only used when iohook is available)
- * @param event - The keydown event from iohook
+ * Handles special keydown events (only used when uiohook-napi is available)
+ * @param event - The keydown event from uiohook-napi
  */
 function handleKeydown(event: any): void {
-  if (!iohookAvailable) return;
+  if (!uiohookAvailable) return;
   
   try {
     const now = Date.now();
@@ -505,13 +507,13 @@ export function getMonitoringStatus(): {
   targetProcessName: string;
   keyboardListenerActive: boolean;
   textBufferLength: number;
-  iohookAvailable: boolean;
-  captureMode: 'iohook' | 'fallback' | 'disabled';
+  uiohookAvailable: boolean;
+  captureMode: 'uiohook' | 'fallback' | 'disabled';
 } {
-  let captureMode: 'iohook' | 'fallback' | 'disabled' = 'disabled';
+  let captureMode: 'uiohook' | 'fallback' | 'disabled' = 'disabled';
   
   if (state.keyboardListenerActive) {
-    captureMode = iohookAvailable ? 'iohook' : 'fallback';
+    captureMode = uiohookAvailable ? 'uiohook' : 'fallback';
   }
   
   return {
@@ -521,7 +523,7 @@ export function getMonitoringStatus(): {
     targetProcessName: state.targetProcessName,
     keyboardListenerActive: state.keyboardListenerActive,
     textBufferLength: state.currentTextBuffer.length,
-    iohookAvailable,
+    uiohookAvailable,
     captureMode
   };
 }

@@ -82,18 +82,18 @@ Used to securely store the user's OpenAI API key in the native macOS Keychain.
 *   **Service Abstraction**: All calls to `keytar` will be wrapped in a `KeychainService` module in `src/main/services/`.
 *   **Error Handling**: The service must handle cases where a key is not found or access to the Keychain is denied by the user.
 
-### 4.2. Precision Monitoring: `active-win` and `iohook`
+### 4.2. Precision Monitoring: `active-win` and `uiohook-napi`
 
 These are the most sensitive components of the application.
 
 ### Best Practices & Conventions
-*   **Least Privilege**: The keyboard listener (`iohook`) **MUST** only be active when the process monitor (`active-win`) confirms that the target application (`Cursor.app`) is the frontmost window. It must be disabled immediately when the user switches to another app.
+*   **Least Privilege**: The keyboard listener (`uiohook-napi`) **MUST** only be active when the process monitor (`active-win`) confirms that the target application (`Cursor.app`) is the frontmost window. It must be disabled immediately when the user switches to another app.
 *   **User Transparency**: The application must be transparent about what it is monitoring and why. The need for Accessibility permissions must be clearly explained.
 *   **Encapsulation**: All logic for these modules will be strictly contained within dedicated services (`ProcessMonitor`, `KeyboardListener`) to prevent misuse elsewhere in the codebase.
 
 ### Limitations & Pitfalls
 *   **Privacy Risk**: This is the highest-risk area of the application. A bug in the monitoring logic could lead to unintentional data capture, which would be a major privacy violation.
-*   **System Conflicts**: `iohook` can potentially conflict with other low-level system utilities. It also requires pre-built binaries which may need to be rebuilt for specific Electron versions using `electron-rebuild`.
+*   **System Conflicts**: `uiohook-napi` can potentially conflict with other low-level system utilities. It provides better compatibility with modern Electron versions compared to the older `iohook` library, but may still require rebuilding for specific Electron versions using `electron-rebuild`.
 
 ### 4.3. OS Scripting: Node.js `child_process`
 

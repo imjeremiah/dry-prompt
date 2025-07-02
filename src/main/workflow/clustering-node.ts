@@ -1,8 +1,9 @@
 /**
- * @file Clustering node for grouping similar text embeddings
+ * @file Clustering node for grouping similar text embeddings using DBSCAN algorithm
  * @module clustering-node
  */
 
+import { DBSCAN } from 'density-clustering';
 import { calculateCosineSimilarity } from './embedding-node';
 
 // Interface for embedding results
@@ -19,16 +20,16 @@ interface ClusterResult {
   size: number;
 }
 
-// Configuration for clustering algorithm
-const CLUSTERING_CONFIG = {
-  similarityThreshold: 0.7,  // Minimum similarity to be in same cluster
-  minClusterSize: 2,         // Minimum number of items per cluster
-  maxClusters: 10            // Maximum number of clusters to return
+// Configuration for DBSCAN clustering algorithm
+const DBSCAN_CONFIG = {
+  epsilon: 0.3,              // Maximum distance between two samples for them to be considered neighbors
+  minPoints: 3,              // Minimum number of points required to form a dense region (cluster)
+  maxClusters: 10,           // Maximum number of clusters to return
+  distanceFunction: 'cosine' // Distance function to use for clustering
 };
 
 /**
- * Clusters embeddings using a simple similarity-based approach
- * This is a simplified alternative to DBSCAN that doesn't require external dependencies
+ * Clusters embeddings using DBSCAN algorithm for density-based clustering
  * @param embeddings - Array of embedding results to cluster
  * @returns Promise resolving to array of clusters
  */
@@ -37,7 +38,7 @@ export async function clusterEmbeddings(embeddings: EmbeddingResult[]): Promise<
     throw new Error('No embeddings provided for clustering');
   }
 
-  console.log(`Clustering ${embeddings.length} embeddings...`);
+  console.log(`Clustering ${embeddings.length} embeddings using DBSCAN...`);
 
   try {
     // Validate embeddings
@@ -49,27 +50,22 @@ export async function clusterEmbeddings(embeddings: EmbeddingResult[]): Promise<
       result.text.trim().length > 0
     );
 
-    if (validEmbeddings.length < 2) {
-      console.log('Not enough valid embeddings for clustering');
+    if (validEmbeddings.length < DBSCAN_CONFIG.minPoints) {
+      console.log(`Not enough valid embeddings for DBSCAN clustering (need at least ${DBSCAN_CONFIG.minPoints})`);
       return [];
     }
 
-    console.log(`Clustering ${validEmbeddings.length} valid embeddings`);
+    console.log(`Clustering ${validEmbeddings.length} valid embeddings with DBSCAN`);
 
-    // Use simple agglomerative clustering approach
-    const clusters = await performSimpleClustering(validEmbeddings);
-
-    // Filter clusters by minimum size
-    const filteredClusters = clusters.filter(cluster => 
-      cluster.size >= CLUSTERING_CONFIG.minClusterSize
-    );
+    // Use DBSCAN clustering algorithm
+    const clusters = await performDBSCANClustering(validEmbeddings);
 
     // Sort by cluster size (largest first) and limit to max clusters
-    const sortedClusters = filteredClusters
+    const sortedClusters = clusters
       .sort((a, b) => b.size - a.size)
-      .slice(0, CLUSTERING_CONFIG.maxClusters);
+      .slice(0, DBSCAN_CONFIG.maxClusters);
 
-    console.log(`Found ${sortedClusters.length} valid clusters`);
+    console.log(`DBSCAN found ${sortedClusters.length} valid clusters`);
     sortedClusters.forEach((cluster, index) => {
       console.log(`Cluster ${index + 1}: ${cluster.size} items`);
       console.log(`  Sample texts: ${cluster.texts.slice(0, 2).map(t => `"${t.substring(0, 50)}..."`).join(', ')}`);
@@ -78,61 +74,67 @@ export async function clusterEmbeddings(embeddings: EmbeddingResult[]): Promise<
     return sortedClusters;
 
   } catch (error) {
-    console.error('Error clustering embeddings:', error);
+    console.error('Error clustering embeddings with DBSCAN:', error);
     throw new Error(`Failed to cluster embeddings: ${error}`);
   }
 }
 
 /**
- * Performs simple similarity-based clustering
+ * Performs DBSCAN clustering on embeddings
  * @param embeddings - Valid embeddings to cluster
  * @returns Array of cluster results
  */
-async function performSimpleClustering(embeddings: EmbeddingResult[]): Promise<ClusterResult[]> {
+async function performDBSCANClustering(embeddings: EmbeddingResult[]): Promise<ClusterResult[]> {
+  // Initialize DBSCAN with configured parameters
+  const dbscan = new DBSCAN();
+  
+  // Extract just the embedding vectors for clustering
+  const vectors = embeddings.map(result => result.embedding);
+  
+  // Define distance function for DBSCAN (1 - cosine similarity = cosine distance)
+  const distanceFunction = (vectorA: number[], vectorB: number[]): number => {
+    const similarity = calculateCosineSimilarity(vectorA, vectorB);
+    return 1 - similarity; // Convert similarity to distance
+  };
+  
+  console.log(`Running DBSCAN with epsilon=${DBSCAN_CONFIG.epsilon}, minPoints=${DBSCAN_CONFIG.minPoints}`);
+  
+  // Run DBSCAN clustering
+  const clusterIndices = dbscan.run(
+    vectors, 
+    DBSCAN_CONFIG.epsilon, 
+    DBSCAN_CONFIG.minPoints, 
+    distanceFunction
+  );
+  
+  console.log(`DBSCAN returned ${clusterIndices.length} clusters`);
+  
+  // Convert DBSCAN results to our cluster format
   const clusters: ClusterResult[] = [];
-  const processed = new Set<number>();
-
-  for (let i = 0; i < embeddings.length; i++) {
-    if (processed.has(i)) {
-      continue; // Already assigned to a cluster
+  
+  for (let clusterIndex = 0; clusterIndex < clusterIndices.length; clusterIndex++) {
+    const pointIndices = clusterIndices[clusterIndex];
+    
+    if (pointIndices.length < DBSCAN_CONFIG.minPoints) {
+      continue; // Skip clusters that are too small
     }
-
-    const seedEmbedding = embeddings[i];
-    const clusterTexts = [seedEmbedding.text];
-    const clusterEmbeddings = [seedEmbedding.embedding];
-    processed.add(i);
-
-    // Find similar embeddings
-    for (let j = i + 1; j < embeddings.length; j++) {
-      if (processed.has(j)) {
-        continue;
-      }
-
-      const targetEmbedding = embeddings[j];
-      const similarity = calculateCosineSimilarity(
-        seedEmbedding.embedding, 
-        targetEmbedding.embedding
-      );
-
-      if (similarity >= CLUSTERING_CONFIG.similarityThreshold) {
-        clusterTexts.push(targetEmbedding.text);
-        clusterEmbeddings.push(targetEmbedding.embedding);
-        processed.add(j);
-      }
-    }
-
-    // Only create cluster if it has minimum size
-    if (clusterTexts.length >= CLUSTERING_CONFIG.minClusterSize) {
-      const centroid = calculateCentroid(clusterEmbeddings);
-      
-      clusters.push({
-        texts: clusterTexts,
-        centroid,
-        size: clusterTexts.length
-      });
-    }
+    
+    // Get texts and embeddings for this cluster
+    const clusterTexts = pointIndices.map(idx => embeddings[idx].text);
+    const clusterEmbeddings = pointIndices.map(idx => embeddings[idx].embedding);
+    
+    // Calculate centroid
+    const centroid = calculateCentroid(clusterEmbeddings);
+    
+    clusters.push({
+      texts: clusterTexts,
+      centroid,
+      size: clusterTexts.length
+    });
   }
-
+  
+  console.log(`Created ${clusters.length} valid clusters from DBSCAN results`);
+  
   return clusters;
 }
 

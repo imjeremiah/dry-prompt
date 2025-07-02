@@ -5,6 +5,7 @@
 
 import { Notification } from 'electron';
 import * as applescriptService from './applescript-service';
+import * as supabaseService from './supabase-service';
 
 // Interface for suggestion data
 interface SuggestionData {
@@ -12,6 +13,7 @@ interface SuggestionData {
   replacement: string;
   sourceTexts: string[];
   confidence: number;
+  suggestionId?: string; // Supabase record ID for tracking user feedback
 }
 
 // Interface for notification callbacks
@@ -75,6 +77,12 @@ export async function showSuggestionNotification(
         
         if (success) {
           showConfirmationNotification(suggestion.trigger);
+          
+          // Update status in Supabase if suggestionId is available
+          if (suggestion.suggestionId) {
+            await supabaseService.updateSuggestionStatus(suggestion.suggestionId, 'accepted');
+          }
+          
           callbacks.onAccepted?.(suggestion);
         } else {
           showErrorNotification('Failed to create shortcut. Please try manually.');
@@ -85,19 +93,37 @@ export async function showSuggestionNotification(
       }
     } else if (index === 1) { // Dismiss button
       console.log(`User dismissed suggestion: ${suggestion.trigger}`);
+      
+      // Update status in Supabase if suggestionId is available
+      if (suggestion.suggestionId) {
+        await supabaseService.updateSuggestionStatus(suggestion.suggestionId, 'rejected');
+      }
+      
       callbacks.onRejected?.(suggestion);
     }
   });
 
   // Handle notification being closed without action
-  notification.on('close', () => {
+  notification.on('close', async () => {
     console.log(`Notification closed for suggestion: ${suggestion.trigger}`);
+    
+    // Update status in Supabase if suggestionId is available
+    if (suggestion.suggestionId) {
+      await supabaseService.updateSuggestionStatus(suggestion.suggestionId, 'rejected');
+    }
+    
     callbacks.onRejected?.(suggestion);
   });
 
   // Handle notification click (treat as dismiss)
-  notification.on('click', () => {
+  notification.on('click', async () => {
     console.log(`Notification clicked for suggestion: ${suggestion.trigger}`);
+    
+    // Update status in Supabase if suggestionId is available
+    if (suggestion.suggestionId) {
+      await supabaseService.updateSuggestionStatus(suggestion.suggestionId, 'rejected');
+    }
+    
     callbacks.onRejected?.(suggestion);
   });
 
@@ -212,12 +238,12 @@ export function showAnalysisCompleteNotification(count: number): void {
  * Shows a notification when monitoring starts
  * @param captureMode - The type of capture being used
  */
-export function showMonitoringStartedNotification(captureMode?: 'iohook' | 'fallback' | 'disabled'): void {
+export function showMonitoringStartedNotification(captureMode?: 'uiohook' | 'fallback' | 'disabled'): void {
   let body = 'DryPrompt is now monitoring your Cursor usage to learn your typing patterns.';
   
   if (captureMode === 'fallback') {
     body = 'DryPrompt is monitoring Cursor activity. Using fallback mode for text capture.';
-  } else if (captureMode === 'iohook') {
+  } else if (captureMode === 'uiohook') {
     body = 'DryPrompt is monitoring your Cursor usage with full keyboard capture enabled.';
   }
   
