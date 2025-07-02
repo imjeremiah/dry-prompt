@@ -89,3 +89,4 @@ release/
 
 # Local development files
 prompt_log.json 
+node_modules
