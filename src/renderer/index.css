@@ -19,6 +19,13 @@ body {
     --input-background: #2d2d2d;
     --button-background: #0066cc;
     --button-hover: #0052a3;
+    --error-color: #ff453a;
+    --warning-color: #ff9f0a;
+    --success-color: #30d158;
+    --preview-bg: #2d2d2d;
+    --secondary-button-bg: #48484a;
+    --secondary-button-hover: #5a5a5c;
+    --border-color: #48484a;
   }
 }
 
@@ -55,7 +62,7 @@ h1 {
 }
 
 .form-group {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 label {
@@ -85,12 +92,42 @@ input[type="password"]:focus {
   box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
 }
 
+/* Trigger input styling to match textarea */
+input[type="text"] {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color, #d1d1d6);
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  background-color: var(--input-background, #ffffff);
+  color: var(--text-color);
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  line-height: 1.4;
+}
+
+input[type="text"]:focus {
+  outline: none;
+  border-color: var(--button-background, #007aff);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+}
+
 @media (prefers-color-scheme: dark) {
   input[type="password"] {
     border-color: #48484a;
   }
   
   input[type="password"]:focus {
+    border-color: var(--button-background, #0066cc);
+    box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.2);
+  }
+
+  input[type="text"] {
+    border-color: #48484a;
+  }
+  
+  input[type="text"]:focus {
     border-color: var(--button-background, #0066cc);
     box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.2);
   }
@@ -152,21 +189,21 @@ input[type="password"]:focus {
 
 /* Edit Dialog Styles */
 .dialog-container {
-  max-width: 400px;
+  max-width: 460px;
   margin: 0 auto;
-  padding: 32px;
+  padding: 24px;
 }
 
 .dialog-header {
   text-align: center;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 .dialog-title {
   font-size: 18px;
   font-weight: 600;
   color: var(--text-color);
-  margin: 0 0 8px 0;
+  margin: 0 0 6px 0;
 }
 
 .dialog-subtitle {
@@ -174,6 +211,10 @@ input[type="password"]:focus {
   color: var(--secondary-text-color);
   margin: 0;
   line-height: 1.5;
+}
+
+.form-group {
+  margin-bottom: 20px;
 }
 
 textarea {
@@ -255,8 +296,8 @@ textarea:focus {
   background: var(--preview-bg, #f8f9fa);
   border: 1px solid var(--border-color, #d1d1d6);
   border-radius: 6px;
-  padding: 16px;
-  margin: 20px 0;
+  padding: 12px;
+  margin: 16px 0;
 }
 
 .preview-title {
@@ -287,7 +328,7 @@ textarea:focus {
 .button-group {
   display: flex;
   gap: 12px;
-  margin-top: 24px;
+  margin-top: 20px;
   justify-content: flex-end;
 }
 
@@ -340,7 +381,7 @@ textarea:focus {
   pointer-events: none;
 }
 
-/* Dark mode overrides for edit dialog elements */
+/* Dark mode overrides for all edit dialog elements */
 @media (prefers-color-scheme: dark) {
   body {
     --error-color: #ff453a;

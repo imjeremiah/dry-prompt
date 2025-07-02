@@ -29,6 +29,7 @@
 import './index.css';
 
 console.log('👋 This message is being logged by "renderer.ts", included via Vite');
+console.log('DryPrompt renderer script loaded - checking current URL:', window.location.href);
 
 /**
  * @file Renderer process entry point for both configuration and edit dialog windows
@@ -38,17 +39,22 @@ console.log('👋 This message is being logged by "renderer.ts", included via Vi
 // Router to handle different views
 class AppRouter {
   constructor() {
+    console.log('AppRouter constructor called');
     this.currentView = null;
     this.initializeRouter();
   }
 
   initializeRouter() {
+    console.log('Initializing router...');
     // Check URL hash to determine which view to show
     const hash = window.location.hash;
+    console.log('Current URL hash:', hash);
     
     if (hash === '#edit-dialog') {
+      console.log('Hash indicates edit dialog - initializing edit dialog view');
       this.showEditDialog();
     } else {
+      console.log('No hash or different hash - showing config view');
       this.showConfigView();
     }
   }
@@ -68,6 +74,8 @@ class AppRouter {
   }
 
   showEditDialog() {
+    console.log('Showing edit dialog view...');
+    
     const configView = document.getElementById('config-view');
     const editView = document.getElementById('edit-dialog-view');
     
@@ -77,8 +85,10 @@ class AppRouter {
     this.currentView = 'edit-dialog';
     document.title = 'Edit Shortcut - DryPrompt';
     
+    console.log('Creating EditDialog instance...');
     // Initialize edit dialog functionality
     new EditDialog();
+    console.log('Edit dialog view setup complete');
   }
 }
 
@@ -167,6 +177,8 @@ class ConfigManager {
 // Edit Dialog Manager
 class EditDialog {
   constructor() {
+    console.log('EditDialog constructor started');
+    
     this.form = document.getElementById('edit-form');
     this.triggerInput = document.getElementById('trigger-input') as HTMLInputElement;
     this.replacementInput = document.getElementById('replacement-input') as HTMLTextAreaElement;
@@ -175,12 +187,25 @@ class EditDialog {
     this.previewDemo = document.getElementById('preview-demo');
     this.characterCount = document.getElementById('character-count');
 
+    // Debug element availability
+    console.log('Form elements found:', {
+      form: !!this.form,
+      triggerInput: !!this.triggerInput,
+      replacementInput: !!this.replacementInput,
+      createBtn: !!this.createBtn,
+      cancelBtn: !!this.cancelBtn,
+      previewDemo: !!this.previewDemo,
+      characterCount: !!this.characterCount
+    });
+
     this.triggerValid = false;
     this.replacementValid = false;
     this.originalSuggestion = null;
 
     this.setupEventListeners();
     this.setupSuggestionListener();
+    
+    console.log('EditDialog constructor completed');
   }
 
   setupEventListeners() {
@@ -212,16 +237,49 @@ class EditDialog {
   }
 
   setupSuggestionListener() {
+    console.log('Setting up suggestion listener...');
     window.electronAPI.onLoadSuggestion((suggestion) => {
+      console.log('Received suggestion data:', suggestion);
       this.originalSuggestion = suggestion;
       this.loadSuggestion(suggestion);
     });
   }
 
   loadSuggestion(suggestion) {
-    if (this.triggerInput) this.triggerInput.value = suggestion.trigger;
-    if (this.replacementInput) this.replacementInput.value = suggestion.replacement;
+    console.log('Loading suggestion into form:', suggestion);
     
+    if (!suggestion) {
+      console.error('No suggestion data provided');
+      return;
+    }
+    
+    // If elements aren't available yet, try again after a short delay
+    if (!this.triggerInput || !this.replacementInput) {
+      console.log('Form elements not ready, retrying in 50ms...');
+      setTimeout(() => {
+        // Re-query elements
+        this.triggerInput = document.getElementById('trigger-input') as HTMLInputElement;
+        this.replacementInput = document.getElementById('replacement-input') as HTMLTextAreaElement;
+        this.loadSuggestion(suggestion);
+      }, 50);
+      return;
+    }
+    
+    if (this.triggerInput) {
+      this.triggerInput.value = suggestion.trigger || '';
+      console.log('Set trigger input to:', suggestion.trigger);
+    } else {
+      console.error('Trigger input element not found');
+    }
+    
+    if (this.replacementInput) {
+      this.replacementInput.value = suggestion.replacement || '';
+      console.log('Set replacement input to:', suggestion.replacement);
+    } else {
+      console.error('Replacement input element not found');
+    }
+    
+    // Trigger validation and updates
     this.validateTrigger();
     this.validateReplacement();
     this.updateCharacterCount();
@@ -230,6 +288,8 @@ class EditDialog {
     // Focus the trigger input for immediate editing
     this.triggerInput?.focus();
     this.triggerInput?.select();
+    
+    console.log('Suggestion loaded successfully');
   }
 
   async validateTrigger() {
@@ -375,6 +435,24 @@ class EditDialog {
 
 // Initialize the app when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('DryPrompt renderer loaded');
-  new AppRouter();
+  console.log('DOMContentLoaded event fired - initializing DryPrompt renderer');
+  try {
+    new AppRouter();
+    console.log('AppRouter initialized successfully');
+  } catch (error) {
+    console.error('Error initializing AppRouter:', error);
+  }
 });
+
+// Backup initialization in case DOMContentLoaded already fired
+if (document.readyState === 'loading') {
+  console.log('Document still loading, waiting for DOMContentLoaded');
+} else {
+  console.log('Document already loaded, initializing immediately');
+  try {
+    new AppRouter();
+    console.log('AppRouter initialized successfully (immediate)');
+  } catch (error) {
+    console.error('Error initializing AppRouter immediately:', error);
+  }
+}

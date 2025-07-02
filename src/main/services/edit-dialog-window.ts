@@ -35,6 +35,7 @@ interface ValidationResult {
 }
 
 let currentEditWindow: BrowserWindow | null = null;
+let ipcHandlersRegistered = false;
 
 /**
  * Creates and displays an edit dialog for customizing a suggestion
@@ -46,15 +47,22 @@ export async function createEditDialog(
   suggestion: SuggestionData, 
   callbacks: EditDialogCallbacks
 ): Promise<void> {
-  // Don't create multiple edit dialogs
+  // Force cleanup of any existing edit dialog and handlers
   if (currentEditWindow && !currentEditWindow.isDestroyed()) {
-    currentEditWindow.focus();
-    return;
+    console.log('Closing existing edit dialog window');
+    currentEditWindow.close();
+    currentEditWindow = null;
   }
+  
+  // Force cleanup of IPC handlers
+  cleanupEditDialogIpcHandlers();
+  
+  // Wait a moment for cleanup to complete
+  await new Promise(resolve => setTimeout(resolve, 100));
 
   currentEditWindow = new BrowserWindow({
-    width: 500,
-    height: 450,
+    width: 520,
+    height: 600,
     resizable: false,
     minimizable: false,
     maximizable: false,
@@ -68,20 +76,44 @@ export async function createEditDialog(
     },
   });
 
-  // Set up IPC handlers for this dialog
+  // Set up IPC handlers for this dialog (clean up first to prevent conflicts)
   setupEditDialogIpcHandlers(suggestion, callbacks);
 
   // Load the edit dialog - use same URL pattern as config window with a hash
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    console.log(`Loading edit dialog from dev server: ${MAIN_WINDOW_VITE_DEV_SERVER_URL}/#edit-dialog`);
     await currentEditWindow.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}/#edit-dialog`);
   } else {
-    await currentEditWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`), { hash: '#edit-dialog' });
+    const htmlPath = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`);
+    console.log(`Loading edit dialog from file: ${htmlPath} with hash #edit-dialog`);
+    await currentEditWindow.loadFile(htmlPath, { hash: '#edit-dialog' });
   }
+
+  // Add debugging for loading events
+  currentEditWindow.webContents.on('did-start-loading', () => {
+    console.log('Edit dialog started loading');
+  });
+
+  currentEditWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+    console.error('Edit dialog failed to load:', errorCode, errorDescription);
+  });
+
+  currentEditWindow.webContents.on('dom-ready', () => {
+    console.log('Edit dialog DOM ready - populating form immediately');
+    populateFormWithSuggestion(suggestion);
+  });
 
   // Send the initial suggestion data to the renderer
   currentEditWindow.webContents.once('did-finish-load', () => {
-    currentEditWindow?.webContents.send('load-suggestion', suggestion);
+    console.log('Edit dialog finished loading - sending suggestion data');
+    populateFormWithSuggestion(suggestion);
   });
+
+  // Backup method - populate after a delay regardless of events
+  setTimeout(() => {
+    console.log('Backup timer - force populating form after 1 second');
+    populateFormWithSuggestion(suggestion);
+  }, 1000);
 
   // Clean up when window is closed
   currentEditWindow.on('closed', () => {
@@ -95,6 +127,12 @@ export async function createEditDialog(
   });
 
   console.log(`Edit dialog created for suggestion: ${suggestion.trigger}`);
+
+  // Enable DevTools for debugging
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    console.log('Opening DevTools for edit dialog debugging');
+    currentEditWindow.webContents.openDevTools();
+  }
 }
 
 /**
@@ -106,71 +144,93 @@ function setupEditDialogIpcHandlers(
   originalSuggestion: SuggestionData, 
   callbacks: EditDialogCallbacks
 ): void {
-  // Clean up any existing handlers first
-  cleanupEditDialogIpcHandlers();
+  // Clean up any existing handlers first to prevent registration conflicts
+  if (ipcHandlersRegistered) {
+    cleanupEditDialogIpcHandlers();
+  }
 
-  // Handle trigger validation
-  ipcMain.handle('validate-trigger', async (event, trigger: string): Promise<ValidationResult> => {
-    return await validateTrigger(trigger);
-  });
+  try {
+    // Handle trigger validation
+    ipcMain.handle('validate-trigger', async (event, trigger: string): Promise<ValidationResult> => {
+      return await validateTrigger(trigger);
+    });
 
-  // Handle replacement text validation
-  ipcMain.handle('validate-replacement', async (event, replacement: string): Promise<ValidationResult> => {
-    return validateReplacementText(replacement);
-  });
+    // Handle replacement text validation
+    ipcMain.handle('validate-replacement', async (event, replacement: string): Promise<ValidationResult> => {
+      return validateReplacementText(replacement);
+    });
 
-  // Handle dialog confirmation
-  ipcMain.handle('confirm-edit', async (event, editedData: { trigger: string; replacement: string }) => {
-    try {
-      // Create the edited suggestion object
-      const editedSuggestion: SuggestionData = {
-        ...originalSuggestion,
-        trigger: editedData.trigger.trim(),
-        replacement: editedData.replacement.trim()
-      };
+    // Handle dialog confirmation
+    ipcMain.handle('confirm-edit', async (event, editedData: { trigger: string; replacement: string }) => {
+      try {
+        // Create the edited suggestion object
+        const editedSuggestion: SuggestionData = {
+          ...originalSuggestion,
+          trigger: editedData.trigger.trim(),
+          replacement: editedData.replacement.trim()
+        };
 
-      console.log(`User confirmed edit: ${editedSuggestion.trigger}`);
-      callbacks.onConfirm(editedSuggestion);
-      
-      // Close the dialog
-      if (currentEditWindow && !currentEditWindow.isDestroyed()) {
-        currentEditWindow.close();
+        console.log(`User confirmed edit: ${editedSuggestion.trigger}`);
+        callbacks.onConfirm(editedSuggestion);
+        
+        // Close the dialog
+        if (currentEditWindow && !currentEditWindow.isDestroyed()) {
+          currentEditWindow.close();
+        }
+
+        return { success: true };
+      } catch (error) {
+        console.error('Error confirming edit:', error);
+        return { success: false, error: 'Failed to process edit' };
       }
+    });
 
-      return { success: true };
-    } catch (error) {
-      console.error('Error confirming edit:', error);
-      return { success: false, error: 'Failed to process edit' };
-    }
-  });
+    // Handle dialog cancellation
+    ipcMain.handle('cancel-edit', async () => {
+      try {
+        console.log(`User cancelled edit for: ${originalSuggestion.trigger}`);
+        callbacks.onCancel();
+        
+        // Close the dialog
+        if (currentEditWindow && !currentEditWindow.isDestroyed()) {
+          currentEditWindow.close();
+        }
 
-  // Handle dialog cancellation
-  ipcMain.handle('cancel-edit', async () => {
-    try {
-      console.log(`User cancelled edit for: ${originalSuggestion.trigger}`);
-      callbacks.onCancel();
-      
-      // Close the dialog
-      if (currentEditWindow && !currentEditWindow.isDestroyed()) {
-        currentEditWindow.close();
+        return { success: true };
+      } catch (error) {
+        console.error('Error cancelling edit:', error);
+        return { success: false, error: 'Failed to cancel edit' };
       }
+    });
 
-      return { success: true };
-    } catch (error) {
-      console.error('Error cancelling edit:', error);
-      return { success: false, error: 'Failed to cancel edit' };
-    }
-  });
+    ipcHandlersRegistered = true;
+    console.log('Edit dialog IPC handlers registered successfully');
+    
+  } catch (error) {
+    console.error('Error setting up edit dialog IPC handlers:', error);
+    throw error;
+  }
 }
 
 /**
  * Cleans up IPC handlers when dialog is closed
  */
 function cleanupEditDialogIpcHandlers(): void {
-  ipcMain.removeAllListeners('validate-trigger');
-  ipcMain.removeAllListeners('validate-replacement');
-  ipcMain.removeAllListeners('confirm-edit');
-  ipcMain.removeAllListeners('cancel-edit');
+  if (ipcHandlersRegistered) {
+    try {
+      // Use removeHandler instead of removeAllListeners for specific handlers
+      ipcMain.removeHandler('validate-trigger');
+      ipcMain.removeHandler('validate-replacement');
+      ipcMain.removeHandler('confirm-edit');
+      ipcMain.removeHandler('cancel-edit');
+      ipcHandlersRegistered = false;
+      console.log('Edit dialog IPC handlers cleaned up');
+    } catch (error) {
+      console.error('Error cleaning up IPC handlers:', error);
+      // Force reset the flag even if cleanup fails
+      ipcHandlersRegistered = false;
+    }
+  }
 }
 
 /**
@@ -295,6 +355,103 @@ function validateReplacementText(replacement: string): ValidationResult {
 }
 
 /**
+ * Populates the edit dialog form with suggestion data using multiple methods
+ * @param suggestion - The suggestion data to populate
+ */
+function populateFormWithSuggestion(suggestion: SuggestionData): void {
+  if (!currentEditWindow || currentEditWindow.isDestroyed()) {
+    console.error('Cannot populate form - edit window not available');
+    return;
+  }
+
+  console.log('Populating form with suggestion:', {
+    trigger: suggestion.trigger,
+    replacement: suggestion.replacement,
+    confidence: suggestion.confidence
+  });
+
+  // Method 1: Send IPC message (for proper renderer script)
+  try {
+    currentEditWindow.webContents.send('load-suggestion', suggestion);
+    console.log('Sent load-suggestion IPC message');
+  } catch (error) {
+    console.error('Error sending load-suggestion IPC:', error);
+  }
+
+  // Method 2: Direct JavaScript execution (backup method)
+  const escapedReplacement = suggestion.replacement.replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n');
+  
+  const populationScript = `
+    console.log('Direct JavaScript execution - populating form');
+    console.log('Target trigger: ${suggestion.trigger}');
+    console.log('Target replacement: ${suggestion.replacement}');
+    
+    // Wait for DOM to be ready
+    function populateForm() {
+      const triggerInput = document.getElementById('trigger-input');
+      const replacementInput = document.getElementById('replacement-input');
+      const characterCount = document.getElementById('character-count');
+      const previewDemo = document.getElementById('preview-demo');
+      
+      console.log('Form elements found:', {
+        triggerInput: !!triggerInput,
+        replacementInput: !!replacementInput,
+        characterCount: !!characterCount,
+        previewDemo: !!previewDemo
+      });
+      
+      if (triggerInput) {
+        triggerInput.value = '${suggestion.trigger}';
+        triggerInput.dispatchEvent(new Event('input', { bubbles: true }));
+        console.log('Set trigger input to: ${suggestion.trigger}');
+      } else {
+        console.error('Trigger input element not found');
+      }
+      
+      if (replacementInput) {
+        replacementInput.value = '${escapedReplacement}';
+        replacementInput.dispatchEvent(new Event('input', { bubbles: true }));
+        console.log('Set replacement input, length:', replacementInput.value.length);
+      } else {
+        console.error('Replacement input element not found');
+      }
+      
+      if (characterCount) {
+        characterCount.textContent = '${suggestion.replacement.length} characters';
+        console.log('Updated character count');
+      }
+      
+             if (previewDemo) {
+         previewDemo.innerHTML = 'Type <strong>${suggestion.trigger}</strong> <span class="preview-arrow">→</span> Get "${suggestion.replacement.substring(0, 50)}${suggestion.replacement.length > 50 ? '...' : ''}"';
+         console.log('Updated preview');
+       }
+      
+      // Enable create button if both fields have content
+      const createBtn = document.getElementById('create-btn');
+      if (createBtn && triggerInput && replacementInput && triggerInput.value && replacementInput.value) {
+        createBtn.disabled = false;
+        console.log('Enabled create button');
+      }
+      
+      console.log('Form population completed via direct JavaScript');
+    }
+    
+    // Try immediately
+    populateForm();
+    
+    // Try again after 100ms in case DOM isn't ready
+    setTimeout(populateForm, 100);
+    
+    // Try again after 500ms as final backup
+    setTimeout(populateForm, 500);
+  `;
+
+  currentEditWindow.webContents.executeJavaScript(populationScript).catch(error => {
+    console.error('Error executing form population script:', error);
+  });
+}
+
+/**
  * Gets the current edit window instance (for advanced usage)
  * @returns Current edit window or null
  */
@@ -308,5 +465,22 @@ export function getCurrentEditWindow(): BrowserWindow | null {
 export function closeCurrentEditDialog(): void {
   if (currentEditWindow && !currentEditWindow.isDestroyed()) {
     currentEditWindow.close();
+  }
+}
+
+/**
+ * Global cleanup function to call on app startup to ensure no stale IPC handlers
+ */
+export function globalCleanupEditDialogHandlers(): void {
+  try {
+    ipcMain.removeHandler('validate-trigger');
+    ipcMain.removeHandler('validate-replacement'); 
+    ipcMain.removeHandler('confirm-edit');
+    ipcMain.removeHandler('cancel-edit');
+    ipcHandlersRegistered = false;
+    console.log('Global cleanup of edit dialog IPC handlers completed');
+  } catch (error) {
+    // Ignore errors during startup cleanup
+    console.log('Global cleanup completed (some handlers may not have existed)');
   }
 } 

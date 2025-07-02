@@ -5,7 +5,7 @@ import * as appController from './services/app-controller';
 import * as trayManager from './services/tray-manager';
 import * as monitoringService from './services/monitoring-service';
 import * as permissionService from './services/permission-service';
-import { createEditDialog } from './services/edit-dialog-window';
+import { createEditDialog, globalCleanupEditDialogHandlers } from './services/edit-dialog-window';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -144,6 +144,9 @@ const setupIpcHandlers = () => {
  */
 async function initializeApplication(): Promise<void> {
   console.log('Initializing DryPrompt application...');
+
+  // Clean up any stale IPC handlers from previous runs
+  globalCleanupEditDialogHandlers();
 
   // Set up IPC handlers
   setupIpcHandlers();
