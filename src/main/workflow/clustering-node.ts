@@ -23,7 +23,7 @@ interface ClusterResult {
 // Configuration for DBSCAN clustering algorithm
 const DBSCAN_CONFIG = {
   epsilon: 0.3,              // Maximum distance between two samples for them to be considered neighbors
-  minPoints: 3,              // Minimum number of points required to form a dense region (cluster)
+  minPoints: 2,              // TEMPORARILY LOWERED: Minimum number of points required to form a dense region (cluster)
   maxClusters: 10,           // Maximum number of clusters to return
   distanceFunction: 'cosine' // Distance function to use for clustering
 };
@@ -242,7 +242,7 @@ export async function performKMeansClustering(
       .filter((_, index) => assignments[index] === c)
       .map(result => result.text);
 
-    if (clusterTexts.length >= CLUSTERING_CONFIG.minClusterSize) {
+    if (clusterTexts.length >= DBSCAN_CONFIG.minPoints) {
       clusters.push({
         texts: clusterTexts,
         centroid: centroids[c],

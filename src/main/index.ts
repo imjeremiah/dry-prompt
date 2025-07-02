@@ -117,6 +117,26 @@ function updateTrayStatus(status: string): void {
       },
     },
     {
+      label: 'Clear Log & Add Test Data',
+      click: async () => {
+        console.log('Clearing log and adding fresh test data...');
+        try {
+          // Clear existing log
+          const loggingService = await import('./services/logging-service');
+          await loggingService.clearLog();
+          console.log('✅ Log cleared');
+          
+          // Add fresh test data
+          await monitoringService.addSampleData();
+          console.log('✅ Fresh test data added');
+          updateTrayStatus('Fresh test data ready');
+        } catch (error) {
+          console.error('Error clearing and adding test data:', error);
+          updateTrayStatus('Error with test data');
+        }
+      },
+    },
+    {
       label: 'Check Monitoring Status',
       click: () => {
         const status = monitoringService.getMonitoringStatus();
@@ -136,6 +156,24 @@ function updateTrayStatus(status: string): void {
       click: async () => {
         console.log('Analyze Now clicked - starting manual analysis');
         await triggerManualAnalysis();
+      },
+    },
+    {
+      label: 'Test Notification',
+      click: () => {
+        console.log('Test notification clicked');
+        try {
+          const { Notification } = require('electron');
+          const testNotification = new Notification({
+            title: 'DryPrompt Test',
+            body: 'This is a test notification. If you see this, notifications are working!',
+            hasReply: false
+          });
+          testNotification.show();
+          console.log('✅ Test notification shown');
+        } catch (error) {
+          console.error('❌ Test notification failed:', error);
+        }
       },
     },
     {
@@ -367,10 +405,48 @@ const createTray = () => {
         },
       },
       {
+        label: 'Clear Log & Add Test Data',
+        click: async () => {
+          console.log('Clearing log and adding fresh test data...');
+          try {
+            // Clear existing log
+            const loggingService = await import('./services/logging-service');
+            await loggingService.clearLog();
+            console.log('✅ Log cleared');
+            
+            // Add fresh test data
+            await monitoringService.addSampleData();
+            console.log('✅ Fresh test data added');
+            updateTrayStatus('Fresh test data ready');
+          } catch (error) {
+            console.error('Error clearing and adding test data:', error);
+            updateTrayStatus('Error with test data');
+          }
+        },
+      },
+      {
         label: 'Analyze Now',
         click: async () => {
           console.log('Analyze Now clicked - starting manual analysis');
           await triggerManualAnalysis();
+        },
+      },
+      {
+        label: 'Test Notification',
+        click: () => {
+          console.log('Test notification clicked');
+          try {
+            const { Notification } = require('electron');
+            const testNotification = new Notification({
+              title: 'DryPrompt Test',
+              body: 'This is a test notification. If you see this, notifications are working!',
+              hasReply: false
+            });
+            testNotification.show();
+            console.log('✅ Test notification shown');
+          } catch (error) {
+            console.error('❌ Test notification failed:', error);
+          }
         },
       },
       {

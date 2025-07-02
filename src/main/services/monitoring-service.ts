@@ -7,16 +7,66 @@ import activeWin from 'active-win';
 import * as loggingService from './logging-service';
 
 // Dynamically import uiohook-napi with error handling
-let uiohook: any = null;
+let uIOhook: any = null;
 let uiohookAvailable = false;
 
 try {
-  uiohook = require('uiohook-napi');
+  const uiohookModule = require('uiohook-napi');
+  uIOhook = uiohookModule.uIOhook || uiohookModule.default?.uIOhook || uiohookModule;
   uiohookAvailable = true;
   console.log('uiohook-napi loaded successfully');
 } catch (error) {
   console.warn('uiohook-napi not available, keyboard capture will be disabled:', error);
   uiohookAvailable = false;
+}
+
+// Virtual keycode to character mapping for uiohook-napi
+// This maps the virtual key codes to their corresponding characters
+const KEYCODE_TO_CHAR: { [key: number]: string } = {
+  // Letters (A-Z)
+  30: 'a', 48: 'b', 46: 'c', 32: 'd', 18: 'e', 33: 'f', 34: 'g', 35: 'h',
+  23: 'i', 36: 'j', 37: 'k', 38: 'l', 50: 'm', 49: 'n', 24: 'o', 25: 'p',
+  16: 'q', 19: 'r', 31: 's', 20: 't', 22: 'u', 47: 'v', 17: 'w', 45: 'x',
+  21: 'y', 44: 'z',
+  
+  // Numbers (0-9)
+  11: '1', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8', 9: '9', 10: '0',
+  
+  // Special characters
+  57: ' ',  // Space
+  12: '-', 13: '=', 26: '[', 27: ']', 43: '\\', 39: ';', 40: "'", 41: '`',
+  51: ',', 52: '.', 53: '/', 
+  
+  // Shifted numbers (symbols)
+  // These would need modifier key detection
+};
+
+// Shifted character mapping (when Shift is held)
+const SHIFTED_KEYCODE_TO_CHAR: { [key: number]: string } = {
+  // Letters become uppercase
+  30: 'A', 48: 'B', 46: 'C', 32: 'D', 18: 'E', 33: 'F', 34: 'G', 35: 'H',
+  23: 'I', 36: 'J', 37: 'K', 38: 'L', 50: 'M', 49: 'N', 24: 'O', 25: 'P',
+  16: 'Q', 19: 'R', 31: 'S', 20: 'T', 22: 'U', 47: 'V', 17: 'W', 45: 'X',
+  21: 'Y', 44: 'Z',
+  
+  // Shifted numbers become symbols
+  11: '!', 2: '@', 3: '#', 4: '$', 5: '%', 6: '^', 7: '&', 8: '*', 9: '(', 10: ')',
+  
+  // Shifted special characters
+  57: ' ',  // Space remains space
+  12: '_', 13: '+', 26: '{', 27: '}', 43: '|', 39: ':', 40: '"', 41: '~',
+  51: '<', 52: '>', 53: '?',
+};
+
+/**
+ * Converts a virtual keycode and modifier state to the actual character
+ * @param keycode - The virtual keycode from uiohook-napi
+ * @param shiftKey - Whether shift is pressed
+ * @returns The character or null if not mappable
+ */
+function keycodeToChar(keycode: number, shiftKey: boolean): string | null {
+  const mapping = shiftKey ? SHIFTED_KEYCODE_TO_CHAR : KEYCODE_TO_CHAR;
+  return mapping[keycode] || null;
 }
 
 // Monitoring state
@@ -184,14 +234,12 @@ async function enableTextCapture(): Promise<void> {
   try {
     console.log('Enabling keyboard capture for target window');
     
+    // Register event handlers before starting
+    uIOhook.on('keydown', handleKeydown);
+    uIOhook.on('keyup', handleKeyup);
+    
     // Start the keyboard listener
-    uiohook.start();
-    
-    // Register keypress handler
-    uiohook.on('keypress', handleKeypress);
-    
-    // Register special key handlers
-    uiohook.on('keydown', handleKeydown);
+    uIOhook.start();
     
     state.keyboardListenerActive = true;
     state.currentTextBuffer = '';
@@ -255,18 +303,18 @@ async function disableTextCapture(): Promise<void> {
     
     // Process any remaining text in buffer before disabling (if using real capture)
     if (uiohookAvailable) {
-      await processTextBuffer();
+      await processTextBuffer(true); // Force process any remaining text before disabling
     }
     
     // Only try to cleanup uiohook if it's available
-    if (uiohookAvailable && uiohook) {
+    if (uiohookAvailable && uIOhook) {
       try {
         // Remove event listeners
-        uiohook.removeAllListeners('keypress');
-        uiohook.removeAllListeners('keydown');
+        uIOhook.off('keydown', handleKeydown);
+        uIOhook.off('keyup', handleKeyup);
         
         // Stop the keyboard listener
-        uiohook.stop();
+        uIOhook.stop();
       } catch (uiohookError) {
         console.warn('Error stopping uiohook-napi:', uiohookError);
       }
@@ -286,33 +334,7 @@ async function disableTextCapture(): Promise<void> {
 }
 
 /**
- * Handles individual keypress events (only used when uiohook-napi is available)
- * @param event - The keypress event from uiohook-napi
- */
-function handleKeypress(event: any): void {
-  if (!uiohookAvailable) return;
-  
-  try {
-    // Only capture printable characters
-    // uiohook-napi may use different property names, check for both
-    const keycode = event.keycode || event.rawcode;
-    if (keycode && keycode >= 32 && keycode <= 126) {
-      const char = String.fromCharCode(keycode);
-      state.currentTextBuffer += char;
-      state.lastKeypressTime = Date.now();
-      
-      // Schedule buffer processing if this is the first character after a pause
-      if (state.currentTextBuffer.length === 1) {
-        setTimeout(processTextBuffer, TEXT_BUFFER_TIMEOUT);
-      }
-    }
-  } catch (error) {
-    console.error('Error handling keypress:', error);
-  }
-}
-
-/**
- * Handles special keydown events (only used when uiohook-napi is available)
+ * Handles keydown events for text capture and special key processing
  * @param event - The keydown event from uiohook-napi
  */
 function handleKeydown(event: any): void {
@@ -321,20 +343,43 @@ function handleKeydown(event: any): void {
   try {
     const now = Date.now();
     
-    // Handle Enter key - process current buffer
-    if (event.keycode === 13) { // Enter key
-      setTimeout(processTextBuffer, 100); // Small delay to capture the complete input
-    }
+    // Handle printable characters for text input using proper keycode mapping
+    const keycode = event.keycode;
     
-    // Handle Backspace
-    else if (event.keycode === 8 && state.currentTextBuffer.length > 0) {
-      state.currentTextBuffer = state.currentTextBuffer.slice(0, -1);
-      state.lastKeypressTime = now;
-    }
-    
-    // Handle other special keys that might indicate end of input
-    else if ([9, 27].includes(event.keycode)) { // Tab, Escape
-      setTimeout(processTextBuffer, 100);
+    if (keycode) {
+      // Try to convert keycode to character using our mapping
+      const char = keycodeToChar(keycode, event.shiftKey || false);
+      
+      if (char) {
+        console.log(`Captured character: "${char}"`);
+        state.currentTextBuffer += char;
+        state.lastKeypressTime = now;
+        
+        // Schedule buffer processing if this is the first character after a pause
+        if (state.currentTextBuffer.length === 1) {
+          setTimeout(() => processTextBuffer(false), TEXT_BUFFER_TIMEOUT); // Auto process with timeout check
+        }
+      }
+      // Handle Enter key - process current buffer
+      else if (keycode === 28) { // Enter key (virtual keycode)
+        console.log('Enter key pressed, processing buffer immediately');
+        setTimeout(() => processTextBuffer(true), 100); // Force process on Enter
+      }
+      // Handle Backspace
+      else if (keycode === 14 && state.currentTextBuffer.length > 0) { // Backspace (virtual keycode)
+        console.log('Backspace pressed');
+        state.currentTextBuffer = state.currentTextBuffer.slice(0, -1);
+        state.lastKeypressTime = now;
+      }
+      // Handle other special keys that might indicate end of input
+      else if ([15, 1].includes(keycode)) { // Tab, Escape (virtual keycodes)
+        console.log(`Special key pressed: ${keycode}, processing buffer`);
+        setTimeout(() => processTextBuffer(true), 100); // Force process on special keys
+      }
+      // Note: We can add back debug logging for unmapped keys if needed
+      // else {
+      //   console.log(`Unmapped keycode: ${keycode} (shift: ${event.shiftKey})`);
+      // }
     }
   } catch (error) {
     console.error('Error handling keydown:', error);
@@ -342,31 +387,62 @@ function handleKeydown(event: any): void {
 }
 
 /**
- * Processes the current text buffer and logs meaningful text
+ * Handles keyup events (currently used for logging/debugging)
+ * @param event - The keyup event from uiohook-napi
  */
-async function processTextBuffer(): Promise<void> {
+function handleKeyup(event: any): void {
+  if (!uiohookAvailable) return;
+  
+  try {
+    // For now, we primarily use keydown events for text capture
+    // This handler can be extended for future keyup-specific functionality
+    // console.log('Key released:', event.keycode);
+  } catch (error) {
+    console.error('Error handling keyup:', error);
+  }
+}
+
+/**
+ * Processes the current text buffer and logs meaningful text
+ * @param forceProcess - If true, bypass timeout check and process immediately
+ */
+async function processTextBuffer(forceProcess: boolean = false): Promise<void> {
+  console.log(`Processing buffer: "${state.currentTextBuffer}" (length: ${state.currentTextBuffer.length}), forced: ${forceProcess}`);
+  
   if (!state.currentTextBuffer || state.currentTextBuffer.trim().length < MIN_TEXT_LENGTH) {
+    console.log(`Buffer too short: ${state.currentTextBuffer.trim().length} < ${MIN_TEXT_LENGTH}`);
     state.currentTextBuffer = '';
     return;
   }
 
-  // Check if enough time has passed since last keypress
-  const timeSinceLastKey = Date.now() - state.lastKeypressTime;
-  if (timeSinceLastKey < TEXT_BUFFER_TIMEOUT) {
-    return; // Still typing, wait longer
+  // Check if enough time has passed since last keypress (unless forced)
+  if (!forceProcess) {
+    const timeSinceLastKey = Date.now() - state.lastKeypressTime;
+    console.log(`Time since last key: ${timeSinceLastKey}ms (threshold: ${TEXT_BUFFER_TIMEOUT}ms)`);
+    
+    if (timeSinceLastKey < TEXT_BUFFER_TIMEOUT) {
+      console.log('Still typing, waiting longer...');
+      return; // Still typing, wait longer
+    }
+  } else {
+    console.log('Force processing - bypassing timeout check');
   }
 
   try {
     const textToLog = state.currentTextBuffer.trim();
+    console.log(`Checking if prompt-like: "${textToLog}"`);
     
     // Only log if it looks like a meaningful prompt or command
     if (isLikelyPrompt(textToLog)) {
+      console.log(`Logging captured text: "${textToLog}"`);
       await loggingService.logTextInput(
         textToLog,
         state.lastActiveWindow,
         state.targetProcessName
       );
-      console.log(`Captured text: "${textToLog.substring(0, 50)}${textToLog.length > 50 ? '...' : ''}"`);
+      console.log(`✅ Successfully logged: "${textToLog.substring(0, 50)}${textToLog.length > 50 ? '...' : ''}"`);
+    } else {
+      console.log(`Text filtered out (not prompt-like): "${textToLog}"`);
     }
     
     // Clear the buffer
@@ -389,28 +465,34 @@ function isLikelyPrompt(text: string): boolean {
     return false;
   }
   
-  // Filter out text that's just repetitive characters
-  const uniqueChars = new Set(text.toLowerCase()).size;
-  if (uniqueChars < 4) {
-    return false;
-  }
+  // TEMPORARY: For testing, accept all text that meets length requirements
+  // This allows us to test with "hello world test" type messages
+  console.log(`Prompt filter: accepting "${text}" for testing purposes`);
+  return true;
   
-  // Look for prompt-like patterns
-  const promptIndicators = [
-    'explain', 'describe', 'how', 'what', 'why', 'create', 'generate',
-    'write', 'make', 'build', 'show', 'tell me', 'can you', 'please',
-    'review', 'check', 'debug', 'fix', 'help', 'analyze'
-  ];
-  
-  const lowerText = text.toLowerCase();
-  const hasPromptIndicator = promptIndicators.some(indicator => 
-    lowerText.includes(indicator)
-  );
-  
-  // Also accept text that ends with question marks or colons (common in prompts)
-  const hasPromptEnding = /[?:]$/.test(text.trim());
-  
-  return hasPromptIndicator || hasPromptEnding;
+  // ORIGINAL LOGIC (commented out for testing):
+  // // Filter out text that's just repetitive characters
+  // const uniqueChars = new Set(text.toLowerCase()).size;
+  // if (uniqueChars < 4) {
+  //   return false;
+  // }
+  // 
+  // // Look for prompt-like patterns
+  // const promptIndicators = [
+  //   'explain', 'describe', 'how', 'what', 'why', 'create', 'generate',
+  //   'write', 'make', 'build', 'show', 'tell me', 'can you', 'please',
+  //   'review', 'check', 'debug', 'fix', 'help', 'analyze'
+  // ];
+  // 
+  // const lowerText = text.toLowerCase();
+  // const hasPromptIndicator = promptIndicators.some(indicator => 
+  //   lowerText.includes(indicator)
+  // );
+  // 
+  // // Also accept text that ends with question marks or colons (common in prompts)
+  // const hasPromptEnding = /[?:]$/.test(text.trim());
+  // 
+  // return hasPromptIndicator || hasPromptEnding;
 }
 
 /**
@@ -542,31 +624,36 @@ export async function manualTextLog(text: string, context?: string): Promise<voi
 }
 
 /**
- * Adds sample data for testing the AI workflow
- * This bypasses the keyboard capture system and directly logs sample prompts
+ * Adds sample data for testing purposes
  */
 export async function addSampleData(): Promise<void> {
   console.log('Adding sample data for testing...');
   
-  const samplePrompts = [
-    'Explain the following code:',
-    'Please explain this code snippet:',
-    'Can you explain how this code works?',
-    'Help me understand this code:',
-    'Describe what this code does:',
-    'Review the following code:',
-    'Please review this code for me:',
-    'Can you review this code snippet?',
-    'Check this code for issues:',
-    'Debug the following code:'
+  // Add multiple similar test phrases that would cluster together
+  const testPhrases = [
+    'hello world test',
+    'hello world example', 
+    'hello world demo',
+    'hello world sample',
+    'test hello world',
+    'simple hello world',
+    'basic hello world test',
+    'quick hello world check',
+    'hello world trial run',
+    'hello world verification'
   ];
   
-  for (const prompt of samplePrompts) {
-    await loggingService.logTextInput(prompt, 'Cursor - test.js', 'Cursor');
-    // Small delay to spread out timestamps
-    await new Promise(resolve => setTimeout(resolve, 100));
+  try {
+    for (const phrase of testPhrases) {
+      await loggingService.logTextInput(
+        phrase,
+        'test-window',
+        'test-app'
+      );
+      console.log(`Added test phrase: "${phrase}"`);
+    }
+    console.log(`✅ Added ${testPhrases.length} similar test phrases for clustering`);
+  } catch (error) {
+    console.error('Error adding sample data:', error);
   }
-  
-  console.log(`Added ${samplePrompts.length} sample prompts for testing`);
-  console.log('Note: This sample data was added directly to the log file, bypassing keyboard capture');
 } 

@@ -55,10 +55,6 @@ export async function showSuggestionNotification(
       {
         type: 'button',
         text: 'Create Shortcut'
-      },
-      {
-        type: 'button', 
-        text: 'Dismiss'
       }
     ],
     closeButtonText: 'Dismiss'
@@ -66,7 +62,7 @@ export async function showSuggestionNotification(
 
   // Handle user clicking "Create Shortcut"
   notification.on('action', async (event, index) => {
-    if (index === 0) { // Create Shortcut button
+    if (index === 0) { // Create Shortcut button (only button now)
       console.log(`User accepted suggestion: ${suggestion.trigger}`);
       
       try {
@@ -91,15 +87,6 @@ export async function showSuggestionNotification(
         console.error('Error creating text replacement:', error);
         showErrorNotification('Error creating shortcut. Please check permissions.');
       }
-    } else if (index === 1) { // Dismiss button
-      console.log(`User dismissed suggestion: ${suggestion.trigger}`);
-      
-      // Update status in Supabase if suggestionId is available
-      if (suggestion.suggestionId) {
-        await supabaseService.updateSuggestionStatus(suggestion.suggestionId, 'rejected');
-      }
-      
-      callbacks.onRejected?.(suggestion);
     }
   });
 
@@ -129,7 +116,14 @@ export async function showSuggestionNotification(
 
   // Show the notification
   notification.show();
-  console.log(`Shown suggestion notification: ${suggestion.trigger}`);
+  console.log(`✅ Shown suggestion notification: ${suggestion.trigger}`);
+  
+  // Debug: Check if notification was created successfully
+  setTimeout(() => {
+    console.log(`Notification status check for ${suggestion.trigger}:`, {
+      isDestroyed: notification.isDestroyed ? notification.isDestroyed() : 'unknown'
+    });
+  }, 1000);
 }
 
 /**
