@@ -5,6 +5,7 @@ import * as appController from './services/app-controller';
 import * as trayManager from './services/tray-manager';
 import * as monitoringService from './services/monitoring-service';
 import * as permissionService from './services/permission-service';
+import { createEditDialog } from './services/edit-dialog-window';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -184,6 +185,23 @@ async function initializeApplication(): Promise<void> {
       }
     },
     testNotification: showTestNotification,
+    testEditDialog: () => {
+      console.log('Test Edit Dialog clicked');
+      try {
+        const testSuggestion = {
+          trigger: ';explaincode',
+          replacement: 'Explain the following code:',
+          sourceTexts: ['explain this code', 'explain the code', 'what does this code do'],
+          confidence: 0.85
+        };
+        createEditDialog(testSuggestion, {
+          onConfirm: (edited) => console.log('Test edit confirmed:', edited),
+          onCancel: () => console.log('Test edit cancelled')
+        });
+      } catch (error) {
+        console.error('Error testing edit dialog:', error);
+      }
+    },
     openConsole: openDebugConsole,
     quit: () => {
       console.log('Quit clicked');

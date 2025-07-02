@@ -145,6 +145,7 @@ function createContextMenu(
     clearLogAndAddTestData: () => void;
     analyzeNow: () => void;
     testNotification: () => void;
+    testEditDialog: () => void;
     openConsole: () => void;
     quit: () => void;
     requestPermission?: () => void;
@@ -215,6 +216,11 @@ function createContextMenu(
       click: callbacks.testNotification,
     },
     {
+      label: 'Test Edit Dialog',
+      click: callbacks.testEditDialog,
+      enabled: state === 'idle',
+    },
+    {
       label: 'Open Console (Debug)',
       click: callbacks.openConsole,
     }
@@ -245,6 +251,7 @@ export function initializeTray(callbacks: {
   clearLogAndAddTestData: () => void;
   analyzeNow: () => void;
   testNotification: () => void;
+  testEditDialog: () => void;
   openConsole: () => void;
   quit: () => void;
   requestPermission?: () => void;
@@ -292,6 +299,7 @@ export function updateTray(
     clearLogAndAddTestData: () => void;
     analyzeNow: () => void;
     testNotification: () => void;
+    testEditDialog: () => void;
     openConsole: () => void;
     quit: () => void;
     requestPermission?: () => void;
@@ -344,6 +352,7 @@ export function forceUpdateTray(
     clearLogAndAddTestData: () => void;
     analyzeNow: () => void;
     testNotification: () => void;
+    testEditDialog: () => void;
     openConsole: () => void;
     quit: () => void;
     requestPermission?: () => void;

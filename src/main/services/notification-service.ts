@@ -1,11 +1,12 @@
 /**
- * @file Notification service for displaying AI-generated suggestions to users
+ * @file Notification service for displaying AI-generated suggestions to users with editing capabilities
  * @module notification-service
  */
 
 import { Notification } from 'electron';
 import * as applescriptService from './applescript-service';
 import * as supabaseService from './supabase-service';
+import { createEditDialog } from './edit-dialog-window';
 
 // Interface for suggestion data
 interface SuggestionData {
@@ -16,14 +17,15 @@ interface SuggestionData {
   suggestionId?: string; // Supabase record ID for tracking user feedback
 }
 
-// Interface for notification callbacks
+// Enhanced interface for notification callbacks including edit actions
 interface NotificationCallbacks {
   onAccepted?: (suggestion: SuggestionData) => void;
   onRejected?: (suggestion: SuggestionData) => void;
+  onEdit?: (suggestion: SuggestionData) => void;
 }
 
 /**
- * Shows a native macOS notification for a text replacement suggestion
+ * Shows a native macOS notification for a text replacement suggestion with three action options
  * @param suggestion - The suggestion data to display
  * @param callbacks - Optional callbacks for user actions
  * @returns Promise resolving when notification is shown
@@ -49,81 +51,139 @@ export async function showSuggestionNotification(
 
   const notification = new Notification({
     title: 'DryPrompt - New Shortcut Suggestion',
-    body: `Create shortcut "${suggestion.trigger}" for:\n"${truncateText(suggestion.replacement, 80)}"`,
+    body: `Suggested shortcut: "${suggestion.trigger}"\nFor: "${truncateText(suggestion.replacement, 60)}"`,
     hasReply: false,
     actions: [
       {
         type: 'button',
-        text: 'Create Shortcut'
+        text: 'Create As-Is'
+      },
+      {
+        type: 'button',
+        text: 'Edit First'
       }
     ],
     closeButtonText: 'Dismiss'
   });
 
-  // Handle user clicking "Create Shortcut"
+  // Handle user clicking action buttons
   notification.on('action', async (event, index) => {
-    if (index === 0) { // Create Shortcut button (only button now)
-      console.log(`User accepted suggestion: ${suggestion.trigger}`);
-      
-      try {
-        const success = await applescriptService.createTextReplacement(
-          suggestion.trigger, 
-          suggestion.replacement
-        );
-        
-        if (success) {
-          showConfirmationNotification(suggestion.trigger);
-          
-          // Update status in Supabase if suggestionId is available
-          if (suggestion.suggestionId) {
-            await supabaseService.updateSuggestionStatus(suggestion.suggestionId, 'accepted');
-          }
-          
-          callbacks.onAccepted?.(suggestion);
-        } else {
-          showErrorNotification('Failed to create shortcut. Please try manually.');
-        }
-      } catch (error) {
-        console.error('Error creating text replacement:', error);
-        showErrorNotification('Error creating shortcut. Please check permissions.');
-      }
+    if (index === 0) { // Create As-Is button
+      console.log(`User accepted suggestion as-is: ${suggestion.trigger}`);
+      await handleCreateAsIs(suggestion, callbacks);
+    } else if (index === 1) { // Edit First button
+      console.log(`User wants to edit suggestion: ${suggestion.trigger}`);
+      await handleEditFirst(suggestion, callbacks);
     }
   });
 
-  // Handle notification being closed without action
+  // Handle notification being closed without action (dismiss)
   notification.on('close', async () => {
-    console.log(`Notification closed for suggestion: ${suggestion.trigger}`);
-    
-    // Update status in Supabase if suggestionId is available
-    if (suggestion.suggestionId) {
-      await supabaseService.updateSuggestionStatus(suggestion.suggestionId, 'rejected');
-    }
-    
-    callbacks.onRejected?.(suggestion);
+    console.log(`Notification dismissed for suggestion: ${suggestion.trigger}`);
+    await handleDismiss(suggestion, callbacks);
   });
 
   // Handle notification click (treat as dismiss)
   notification.on('click', async () => {
     console.log(`Notification clicked for suggestion: ${suggestion.trigger}`);
-    
-    // Update status in Supabase if suggestionId is available
-    if (suggestion.suggestionId) {
-      await supabaseService.updateSuggestionStatus(suggestion.suggestionId, 'rejected');
-    }
-    
-    callbacks.onRejected?.(suggestion);
+    await handleDismiss(suggestion, callbacks);
   });
 
   // Show the notification
   notification.show();
-  console.log(`✅ Shown suggestion notification: ${suggestion.trigger}`);
-  
-  // Debug: Check if notification was created successfully
-  setTimeout(() => {
-    console.log(`Notification status check for ${suggestion.trigger}:`, {
-      isDestroyed: notification.isDestroyed ? notification.isDestroyed() : 'unknown'
+  console.log(`✅ Shown enhanced suggestion notification: ${suggestion.trigger}`);
+}
+
+/**
+ * Handles the "Create As-Is" action
+ * @param suggestion - The suggestion data
+ * @param callbacks - Notification callbacks
+ */
+async function handleCreateAsIs(suggestion: SuggestionData, callbacks: NotificationCallbacks): Promise<void> {
+  try {
+    const success = await applescriptService.createTextReplacement(
+      suggestion.trigger, 
+      suggestion.replacement
+    );
+    
+    if (success) {
+      showConfirmationNotification(suggestion.trigger);
+      
+      // Update status in Supabase if suggestionId is available
+      if (suggestion.suggestionId) {
+        await supabaseService.updateSuggestionStatus(suggestion.suggestionId, 'accepted');
+      }
+      
+      callbacks.onAccepted?.(suggestion);
+    } else {
+      showErrorNotification('Failed to create shortcut. Please try manually.');
+    }
+  } catch (error) {
+    console.error('Error creating text replacement:', error);
+    showErrorNotification('Error creating shortcut. Please check permissions.');
+  }
+}
+
+/**
+ * Handles the "Edit First" action by opening the edit dialog
+ * @param suggestion - The suggestion data
+ * @param callbacks - Notification callbacks
+ */
+async function handleEditFirst(suggestion: SuggestionData, callbacks: NotificationCallbacks): Promise<void> {
+  try {
+    console.log(`Opening edit dialog for suggestion: ${suggestion.trigger}`);
+    
+    // Open the edit dialog with the AI suggestion as starting point
+    await createEditDialog(suggestion, {
+      onConfirm: async (editedSuggestion) => {
+        console.log(`User confirmed edited suggestion: ${editedSuggestion.trigger}`);
+        
+        // Create the shortcut with user's edited values
+        const success = await applescriptService.createTextReplacement(
+          editedSuggestion.trigger,
+          editedSuggestion.replacement
+        );
+        
+        if (success) {
+          showConfirmationNotification(editedSuggestion.trigger);
+          
+          // Update status in Supabase with edited flag
+          if (suggestion.suggestionId) {
+            await supabaseService.updateSuggestionStatus(suggestion.suggestionId, 'accepted');
+          }
+          
+          callbacks.onAccepted?.(editedSuggestion);
+        } else {
+          showErrorNotification('Failed to create edited shortcut. Please try manually.');
+        }
+      },
+      onCancel: () => {
+        console.log(`User cancelled edit dialog for: ${suggestion.trigger}`);
+        // Treat cancel as a rejection
+        callbacks.onRejected?.(suggestion);
+      }
     });
-  }, 1000);
+    
+    callbacks.onEdit?.(suggestion);
+    
+  } catch (error) {
+    console.error('Error opening edit dialog:', error);
+    showErrorNotification('Error opening edit dialog. Please try again.');
+  }
+}
+
+/**
+ * Handles the "Dismiss" action
+ * @param suggestion - The suggestion data
+ * @param callbacks - Notification callbacks
+ */
+async function handleDismiss(suggestion: SuggestionData, callbacks: NotificationCallbacks): Promise<void> {
+  // Update status in Supabase if suggestionId is available
+  if (suggestion.suggestionId) {
+    await supabaseService.updateSuggestionStatus(suggestion.suggestionId, 'rejected');
+  }
+  
+  callbacks.onRejected?.(suggestion);
 }
 
 /**

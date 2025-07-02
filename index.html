@@ -6,7 +6,8 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';" />
   </head>
   <body>
-    <div class="config-container">
+    <!-- Configuration View -->
+    <div id="config-view" class="config-container">
       <h1>DryPrompt Configuration</h1>
       <p class="description">Enter your OpenAI API key to enable AI-powered prompt analysis:</p>
       
@@ -29,6 +30,55 @@
       </form>
       
       <div id="status-message" class="status-message hidden"></div>
+    </div>
+
+    <!-- Edit Dialog View -->
+    <div id="edit-dialog-view" class="dialog-container" style="display: none;">
+      <div class="dialog-header">
+        <h2 class="dialog-title">Edit Shortcut</h2>
+        <p class="dialog-subtitle">Customize the AI suggestion to fit your preferences</p>
+      </div>
+
+      <form id="edit-form">
+        <div class="form-group">
+          <label for="trigger-input">Shortcut Trigger</label>
+          <div class="input-container" id="trigger-container">
+            <input 
+              type="text" 
+              id="trigger-input" 
+              placeholder=";explaincode"
+              spellcheck="false"
+              autocomplete="off"
+            >
+            <div class="validation-message" id="trigger-validation"></div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="replacement-input">Replacement Text</label>
+          <div class="input-container" id="replacement-container">
+            <textarea 
+              id="replacement-input" 
+              placeholder="Enter the text that will replace the trigger..."
+              spellcheck="true"
+            ></textarea>
+            <div class="validation-message" id="replacement-validation"></div>
+            <div class="character-count" id="character-count">0 characters</div>
+          </div>
+        </div>
+
+        <div class="preview-section">
+          <div class="preview-title">Preview</div>
+          <div class="preview-demo" id="preview-demo">
+            Type your trigger <span class="preview-arrow">→</span> Get your replacement text
+          </div>
+        </div>
+
+        <div class="button-group">
+          <button type="button" class="btn-secondary" id="cancel-btn">Cancel</button>
+          <button type="submit" class="btn-primary" id="create-btn" disabled>Create Shortcut</button>
+        </div>
+      </form>
     </div>
     
     <script type="module" src="/src/renderer/renderer.ts"></script>

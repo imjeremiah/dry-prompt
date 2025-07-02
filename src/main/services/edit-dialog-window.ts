@@ -1,0 +1,312 @@
+/**
+ * @file Edit dialog window service for allowing users to customize AI-generated suggestions
+ * @module edit-dialog-window
+ */
+
+import { BrowserWindow, ipcMain } from 'electron';
+import path from 'node:path';
+import * as applescriptService from './applescript-service';
+import { isValidTrigger, hasLikelyConflicts } from '../utils/trigger-generator';
+
+// Declare Vite global variables
+declare const MAIN_WINDOW_VITE_DEV_SERVER_URL: string | undefined;
+declare const MAIN_WINDOW_VITE_NAME: string;
+
+// Interface for suggestion data
+interface SuggestionData {
+  trigger: string;
+  replacement: string;
+  sourceTexts: string[];
+  confidence: number;
+  suggestionId?: string;
+}
+
+// Interface for edit dialog callbacks
+interface EditDialogCallbacks {
+  onConfirm: (editedSuggestion: SuggestionData) => void;
+  onCancel: () => void;
+}
+
+// Interface for validation results
+interface ValidationResult {
+  isValid: boolean;
+  message?: string;
+  type?: 'error' | 'warning' | 'success';
+}
+
+let currentEditWindow: BrowserWindow | null = null;
+
+/**
+ * Creates and displays an edit dialog for customizing a suggestion
+ * @param suggestion - The AI-generated suggestion to edit
+ * @param callbacks - Callbacks for user actions
+ * @returns Promise resolving when dialog is created
+ */
+export async function createEditDialog(
+  suggestion: SuggestionData, 
+  callbacks: EditDialogCallbacks
+): Promise<void> {
+  // Don't create multiple edit dialogs
+  if (currentEditWindow && !currentEditWindow.isDestroyed()) {
+    currentEditWindow.focus();
+    return;
+  }
+
+  currentEditWindow = new BrowserWindow({
+    width: 500,
+    height: 450,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    title: 'Edit Shortcut - DryPrompt',
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  });
+
+  // Set up IPC handlers for this dialog
+  setupEditDialogIpcHandlers(suggestion, callbacks);
+
+  // Load the edit dialog - use same URL pattern as config window with a hash
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    await currentEditWindow.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}/#edit-dialog`);
+  } else {
+    await currentEditWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`), { hash: '#edit-dialog' });
+  }
+
+  // Send the initial suggestion data to the renderer
+  currentEditWindow.webContents.once('did-finish-load', () => {
+    currentEditWindow?.webContents.send('load-suggestion', suggestion);
+  });
+
+  // Clean up when window is closed
+  currentEditWindow.on('closed', () => {
+    cleanupEditDialogIpcHandlers();
+    currentEditWindow = null;
+  });
+
+  // Prevent new window creation
+  currentEditWindow.webContents.setWindowOpenHandler(() => {
+    return { action: 'deny' };
+  });
+
+  console.log(`Edit dialog created for suggestion: ${suggestion.trigger}`);
+}
+
+/**
+ * Sets up IPC handlers specific to the edit dialog
+ * @param originalSuggestion - The original AI suggestion
+ * @param callbacks - Dialog callbacks
+ */
+function setupEditDialogIpcHandlers(
+  originalSuggestion: SuggestionData, 
+  callbacks: EditDialogCallbacks
+): void {
+  // Clean up any existing handlers first
+  cleanupEditDialogIpcHandlers();
+
+  // Handle trigger validation
+  ipcMain.handle('validate-trigger', async (event, trigger: string): Promise<ValidationResult> => {
+    return await validateTrigger(trigger);
+  });
+
+  // Handle replacement text validation
+  ipcMain.handle('validate-replacement', async (event, replacement: string): Promise<ValidationResult> => {
+    return validateReplacementText(replacement);
+  });
+
+  // Handle dialog confirmation
+  ipcMain.handle('confirm-edit', async (event, editedData: { trigger: string; replacement: string }) => {
+    try {
+      // Create the edited suggestion object
+      const editedSuggestion: SuggestionData = {
+        ...originalSuggestion,
+        trigger: editedData.trigger.trim(),
+        replacement: editedData.replacement.trim()
+      };
+
+      console.log(`User confirmed edit: ${editedSuggestion.trigger}`);
+      callbacks.onConfirm(editedSuggestion);
+      
+      // Close the dialog
+      if (currentEditWindow && !currentEditWindow.isDestroyed()) {
+        currentEditWindow.close();
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error confirming edit:', error);
+      return { success: false, error: 'Failed to process edit' };
+    }
+  });
+
+  // Handle dialog cancellation
+  ipcMain.handle('cancel-edit', async () => {
+    try {
+      console.log(`User cancelled edit for: ${originalSuggestion.trigger}`);
+      callbacks.onCancel();
+      
+      // Close the dialog
+      if (currentEditWindow && !currentEditWindow.isDestroyed()) {
+        currentEditWindow.close();
+      }
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error cancelling edit:', error);
+      return { success: false, error: 'Failed to cancel edit' };
+    }
+  });
+}
+
+/**
+ * Cleans up IPC handlers when dialog is closed
+ */
+function cleanupEditDialogIpcHandlers(): void {
+  ipcMain.removeAllListeners('validate-trigger');
+  ipcMain.removeAllListeners('validate-replacement');
+  ipcMain.removeAllListeners('confirm-edit');
+  ipcMain.removeAllListeners('cancel-edit');
+}
+
+/**
+ * Validates a trigger text
+ * @param trigger - The trigger text to validate
+ * @returns Validation result with feedback
+ */
+async function validateTrigger(trigger: string): Promise<ValidationResult> {
+  if (!trigger) {
+    return {
+      isValid: false,
+      message: 'Trigger cannot be empty',
+      type: 'error'
+    };
+  }
+
+  if (!trigger.startsWith(';')) {
+    return {
+      isValid: false,
+      message: 'Trigger must start with a semicolon (;)',
+      type: 'error'
+    };
+  }
+
+  if (trigger.length < 3) {
+    return {
+      isValid: false,
+      message: 'Trigger must be at least 3 characters long',
+      type: 'error'
+    };
+  }
+
+  if (trigger.length > 20) {
+    return {
+      isValid: false,
+      message: 'Trigger cannot be longer than 20 characters',
+      type: 'error'
+    };
+  }
+
+  if (!isValidTrigger(trigger)) {
+    return {
+      isValid: false,
+      message: 'Trigger can only contain letters and semicolon',
+      type: 'error'
+    };
+  }
+
+  if (hasLikelyConflicts(trigger)) {
+    return {
+      isValid: true,
+      message: 'This trigger might conflict with common shortcuts',
+      type: 'warning'
+    };
+  }
+
+  // Check if shortcut already exists
+  try {
+    const exists = await applescriptService.checkShortcutExists(trigger);
+    if (exists) {
+      return {
+        isValid: false,
+        message: 'This shortcut already exists in your system',
+        type: 'error'
+      };
+    }
+  } catch (error) {
+    console.warn('Could not check shortcut existence during validation:', error);
+  }
+
+  return {
+    isValid: true,
+    message: 'Trigger looks good!',
+    type: 'success'
+  };
+}
+
+/**
+ * Validates replacement text
+ * @param replacement - The replacement text to validate
+ * @returns Validation result with feedback
+ */
+function validateReplacementText(replacement: string): ValidationResult {
+  if (!replacement) {
+    return {
+      isValid: false,
+      message: 'Replacement text cannot be empty',
+      type: 'error'
+    };
+  }
+
+  if (replacement.length < 5) {
+    return {
+      isValid: false,
+      message: 'Replacement text should be at least 5 characters long',
+      type: 'error'
+    };
+  }
+
+  if (replacement.length > 500) {
+    return {
+      isValid: false,
+      message: 'Replacement text cannot be longer than 500 characters',
+      type: 'error'
+    };
+  }
+
+  const charCount = replacement.length;
+  if (charCount > 200) {
+    return {
+      isValid: true,
+      message: `${charCount} characters (quite long, consider shortening)`,
+      type: 'warning'
+    };
+  }
+
+  return {
+    isValid: true,
+    message: `${charCount} characters`,
+    type: 'success'
+  };
+}
+
+/**
+ * Gets the current edit window instance (for advanced usage)
+ * @returns Current edit window or null
+ */
+export function getCurrentEditWindow(): BrowserWindow | null {
+  return currentEditWindow;
+}
+
+/**
+ * Closes the current edit dialog if open
+ */
+export function closeCurrentEditDialog(): void {
+  if (currentEditWindow && !currentEditWindow.isDestroyed()) {
+    currentEditWindow.close();
+  }
+} 

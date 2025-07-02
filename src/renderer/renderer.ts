@@ -31,107 +31,350 @@ import './index.css';
 console.log('👋 This message is being logged by "renderer.ts", included via Vite');
 
 /**
- * @file Renderer process entry point for the configuration window
+ * @file Renderer process entry point for both configuration and edit dialog windows
  * @module renderer
  */
 
-/**
- * Shows a status message to the user
- * @param message - The message to display
- * @param type - The type of message (success or error)
- */
-function showStatusMessage(message: string, type: 'success' | 'error'): void {
-  const statusElement = document.getElementById('status-message');
-  if (!statusElement) return;
-
-  statusElement.textContent = message;
-  statusElement.className = `status-message ${type}`;
-  statusElement.classList.remove('hidden');
-
-  // Hide the message after 5 seconds
-  setTimeout(() => {
-    statusElement.classList.add('hidden');
-  }, 5000);
-}
-
-/**
- * Validates the OpenAI API key format
- * @param apiKey - The API key to validate
- * @returns Whether the API key appears to be valid
- */
-function validateApiKey(apiKey: string): boolean {
-  // Basic validation: should start with 'sk-' and be at least 20 characters
-  return apiKey.startsWith('sk-') && apiKey.length >= 20;
-}
-
-/**
- * Handles the form submission for saving the API key
- * @param event - The form submission event
- */
-async function handleFormSubmit(event: Event): Promise<void> {
-  event.preventDefault();
-
-  const form = event.target as HTMLFormElement;
-  const formData = new FormData(form);
-  const apiKey = formData.get('api-key') as string;
-
-  if (!apiKey || !validateApiKey(apiKey)) {
-    showStatusMessage('Please enter a valid OpenAI API key (should start with "sk-")', 'error');
-    return;
+// Router to handle different views
+class AppRouter {
+  constructor() {
+    this.currentView = null;
+    this.initializeRouter();
   }
 
-  const saveButton = document.getElementById('save-button') as HTMLButtonElement;
-  if (saveButton) {
-    saveButton.disabled = true;
-    saveButton.textContent = 'Saving...';
-  }
-
-  try {
-    const result = await window.electronAPI.saveApiKey(apiKey);
+  initializeRouter() {
+    // Check URL hash to determine which view to show
+    const hash = window.location.hash;
     
-    if (result.success) {
-      showStatusMessage('API key saved successfully!', 'success');
-      // Clear the form
-      form.reset();
+    if (hash === '#edit-dialog') {
+      this.showEditDialog();
     } else {
-      showStatusMessage(`Failed to save API key: ${result.message}`, 'error');
-    }
-  } catch (error) {
-    console.error('Error saving API key:', error);
-    showStatusMessage('An unexpected error occurred while saving the API key', 'error');
-  } finally {
-    if (saveButton) {
-      saveButton.disabled = false;
-      saveButton.textContent = 'Save Configuration';
+      this.showConfigView();
     }
   }
-}
 
-/**
- * Checks if an API key is already configured on page load
- */
-async function checkExistingApiKey(): Promise<void> {
-  try {
-    const hasApiKey = await window.electronAPI.checkApiKey();
+  showConfigView() {
+    const configView = document.getElementById('config-view');
+    const editView = document.getElementById('edit-dialog-view');
     
-    if (hasApiKey) {
-      showStatusMessage('API key is already configured. You can update it by entering a new one.', 'success');
-    }
-  } catch (error) {
-    console.error('Error checking for existing API key:', error);
+    if (configView) configView.style.display = 'block';
+    if (editView) editView.style.display = 'none';
+    
+    this.currentView = 'config';
+    document.title = 'DryPrompt - Configuration';
+    
+    // Initialize config functionality
+    new ConfigManager();
+  }
+
+  showEditDialog() {
+    const configView = document.getElementById('config-view');
+    const editView = document.getElementById('edit-dialog-view');
+    
+    if (configView) configView.style.display = 'none';
+    if (editView) editView.style.display = 'block';
+    
+    this.currentView = 'edit-dialog';
+    document.title = 'Edit Shortcut - DryPrompt';
+    
+    // Initialize edit dialog functionality
+    new EditDialog();
   }
 }
 
-// Initialize the renderer when DOM is loaded
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('DryPrompt Configuration UI loaded');
-
-  // Set up form submission handler
-  const configForm = document.getElementById('config-form');
-  if (configForm) {
-    configForm.addEventListener('submit', handleFormSubmit);
+// Configuration Manager
+class ConfigManager {
+  constructor() {
+    this.setupEventListeners();
+    this.checkExistingApiKey();
   }
 
-  // Check for existing API key
-  checkExistingApiKey();
+  setupEventListeners() {
+    const configForm = document.getElementById('config-form');
+    if (configForm) {
+      configForm.addEventListener('submit', (e) => this.handleFormSubmit(e));
+    }
+  }
+
+  showStatusMessage(message: string, type: 'success' | 'error'): void {
+    const statusElement = document.getElementById('status-message');
+    if (!statusElement) return;
+
+    statusElement.textContent = message;
+    statusElement.className = `status-message ${type}`;
+    statusElement.classList.remove('hidden');
+
+    setTimeout(() => {
+      statusElement.classList.add('hidden');
+    }, 5000);
+  }
+
+  validateApiKey(apiKey: string): boolean {
+    return apiKey.startsWith('sk-') && apiKey.length >= 20;
+  }
+
+  async handleFormSubmit(event: Event): Promise<void> {
+    event.preventDefault();
+
+    const form = event.target as HTMLFormElement;
+    const formData = new FormData(form);
+    const apiKey = formData.get('api-key') as string;
+
+    if (!apiKey || !this.validateApiKey(apiKey)) {
+      this.showStatusMessage('Please enter a valid OpenAI API key (should start with "sk-")', 'error');
+      return;
+    }
+
+    const saveButton = document.getElementById('save-button') as HTMLButtonElement;
+    if (saveButton) {
+      saveButton.disabled = true;
+      saveButton.textContent = 'Saving...';
+    }
+
+    try {
+      const result = await window.electronAPI.saveApiKey(apiKey);
+      
+      if (result.success) {
+        this.showStatusMessage('API key saved successfully!', 'success');
+        form.reset();
+      } else {
+        this.showStatusMessage(`Failed to save API key: ${result.message}`, 'error');
+      }
+    } catch (error) {
+      console.error('Error saving API key:', error);
+      this.showStatusMessage('An unexpected error occurred while saving the API key', 'error');
+    } finally {
+      if (saveButton) {
+        saveButton.disabled = false;
+        saveButton.textContent = 'Save Configuration';
+      }
+    }
+  }
+
+  async checkExistingApiKey(): Promise<void> {
+    try {
+      const hasApiKey = await window.electronAPI.checkApiKey();
+      
+      if (hasApiKey) {
+        this.showStatusMessage('API key is already configured. You can update it by entering a new one.', 'success');
+      }
+    } catch (error) {
+      console.error('Error checking for existing API key:', error);
+    }
+  }
+}
+
+// Edit Dialog Manager
+class EditDialog {
+  constructor() {
+    this.form = document.getElementById('edit-form');
+    this.triggerInput = document.getElementById('trigger-input') as HTMLInputElement;
+    this.replacementInput = document.getElementById('replacement-input') as HTMLTextAreaElement;
+    this.createBtn = document.getElementById('create-btn') as HTMLButtonElement;
+    this.cancelBtn = document.getElementById('cancel-btn') as HTMLButtonElement;
+    this.previewDemo = document.getElementById('preview-demo');
+    this.characterCount = document.getElementById('character-count');
+
+    this.triggerValid = false;
+    this.replacementValid = false;
+    this.originalSuggestion = null;
+
+    this.setupEventListeners();
+    this.setupSuggestionListener();
+  }
+
+  setupEventListeners() {
+    // Real-time validation
+    this.triggerInput?.addEventListener('input', () => this.validateTrigger());
+    this.replacementInput?.addEventListener('input', () => {
+      this.validateReplacement();
+      this.updateCharacterCount();
+      this.updatePreview();
+    });
+
+    // Form submission
+    this.form?.addEventListener('submit', (e) => this.handleSubmit(e));
+    this.cancelBtn?.addEventListener('click', () => this.handleCancel());
+
+    // Update preview when trigger changes
+    this.triggerInput?.addEventListener('input', () => this.updatePreview());
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        this.handleCancel();
+      } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        if (this.triggerValid && this.replacementValid) {
+          this.form?.dispatchEvent(new Event('submit'));
+        }
+      }
+    });
+  }
+
+  setupSuggestionListener() {
+    window.electronAPI.onLoadSuggestion((suggestion) => {
+      this.originalSuggestion = suggestion;
+      this.loadSuggestion(suggestion);
+    });
+  }
+
+  loadSuggestion(suggestion) {
+    if (this.triggerInput) this.triggerInput.value = suggestion.trigger;
+    if (this.replacementInput) this.replacementInput.value = suggestion.replacement;
+    
+    this.validateTrigger();
+    this.validateReplacement();
+    this.updateCharacterCount();
+    this.updatePreview();
+
+    // Focus the trigger input for immediate editing
+    this.triggerInput?.focus();
+    this.triggerInput?.select();
+  }
+
+  async validateTrigger() {
+    const trigger = this.triggerInput?.value.trim() || '';
+    const container = document.getElementById('trigger-container');
+    const message = document.getElementById('trigger-validation');
+
+    if (!trigger) {
+      this.setValidationState(container, message, 'error', '⚠', 'Trigger cannot be empty');
+      this.triggerValid = false;
+      this.updateCreateButton();
+      return;
+    }
+
+    try {
+      const result = await window.electronAPI.validateTrigger(trigger);
+      const icon = result.type === 'error' ? '⚠' : result.type === 'warning' ? '⚠' : '✓';
+      this.setValidationState(container, message, result.type, icon, result.message);
+      this.triggerValid = result.isValid;
+    } catch (error) {
+      this.setValidationState(container, message, 'error', '⚠', 'Validation error');
+      this.triggerValid = false;
+    }
+
+    this.updateCreateButton();
+  }
+
+  async validateReplacement() {
+    const replacement = this.replacementInput?.value.trim() || '';
+    const container = document.getElementById('replacement-container');
+    const message = document.getElementById('replacement-validation');
+
+    if (!replacement) {
+      this.setValidationState(container, message, 'error', '⚠', 'Replacement text cannot be empty');
+      this.replacementValid = false;
+      this.updateCreateButton();
+      return;
+    }
+
+    try {
+      const result = await window.electronAPI.validateReplacement(replacement);
+      const icon = result.type === 'error' ? '⚠' : result.type === 'warning' ? '⚠' : '✓';
+      this.setValidationState(container, message, result.type, icon, result.message);
+      this.replacementValid = result.isValid;
+    } catch (error) {
+      this.setValidationState(container, message, 'error', '⚠', 'Validation error');
+      this.replacementValid = false;
+    }
+
+    this.updateCreateButton();
+  }
+
+  setValidationState(container, messageEl, type, icon, message) {
+    if (!container || !messageEl) return;
+    
+    // Remove existing classes
+    container.classList.remove('error', 'warning', 'success');
+    messageEl.classList.remove('error', 'warning', 'success');
+
+    // Add new classes
+    if (type) {
+      container.classList.add(type);
+      messageEl.classList.add(type);
+    }
+
+    // Set message content
+    messageEl.innerHTML = message ? `<span class="validation-icon">${icon}</span>${message}` : '';
+  }
+
+  updateCharacterCount() {
+    const count = this.replacementInput?.value.length || 0;
+    if (this.characterCount) {
+      this.characterCount.textContent = `${count} characters`;
+    }
+  }
+
+  updatePreview() {
+    const trigger = this.triggerInput?.value.trim() || '';
+    const replacement = this.replacementInput?.value.trim() || '';
+
+    if (this.previewDemo) {
+      if (trigger && replacement) {
+        this.previewDemo.innerHTML = `Type <strong>${trigger}</strong> <span class="preview-arrow">→</span> Get "${replacement.substring(0, 50)}${replacement.length > 50 ? '...' : ''}"`;
+      } else {
+        this.previewDemo.innerHTML = 'Type your trigger <span class="preview-arrow">→</span> Get your replacement text';
+      }
+    }
+  }
+
+  updateCreateButton() {
+    if (this.createBtn) {
+      this.createBtn.disabled = !(this.triggerValid && this.replacementValid);
+    }
+  }
+
+  async handleSubmit(e) {
+    e.preventDefault();
+    
+    if (!this.triggerValid || !this.replacementValid) {
+      return;
+    }
+
+    const editedData = {
+      trigger: this.triggerInput?.value.trim() || '',
+      replacement: this.replacementInput?.value.trim() || ''
+    };
+
+    try {
+      this.setLoading(true);
+      const result = await window.electronAPI.confirmEdit(editedData);
+      
+      if (!result.success) {
+        alert(`Error: ${result.error || 'Failed to create shortcut'}`);
+      }
+      // Window will be closed by the main process on success
+    } catch (error) {
+      console.error('Error confirming edit:', error);
+      alert('An unexpected error occurred. Please try again.');
+    } finally {
+      this.setLoading(false);
+    }
+  }
+
+  async handleCancel() {
+    try {
+      await window.electronAPI.cancelEdit();
+      // Window will be closed by the main process
+    } catch (error) {
+      console.error('Error cancelling edit:', error);
+    }
+  }
+
+  setLoading(loading) {
+    if (loading) {
+      document.body.classList.add('loading');
+      if (this.createBtn) this.createBtn.textContent = 'Creating...';
+    } else {
+      document.body.classList.remove('loading');
+      if (this.createBtn) this.createBtn.textContent = 'Create Shortcut';
+    }
+  }
+}
+
+// Initialize the app when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('DryPrompt renderer loaded');
+  new AppRouter();
 });
