@@ -48,6 +48,17 @@ DryPrompt is a macOS desktop application that runs silently in the background, m
 
 3. **The application will appear as a menu bar icon** (three horizontal lines) in your macOS menu bar. Right-click the icon to see the context menu with options including "Quit".
 
+### Optional: Enhanced Keyboard Capture
+
+For full keyboard capture functionality, you can install the optional `iohook` dependency:
+
+```bash
+npm install iohook
+npm run electron-rebuild  # May be needed for your Electron version
+```
+
+If `iohook` is not available, the app will automatically use fallback mode with simulated text capture for testing purposes. The core AI workflow and suggestion system will work in both modes.
+
 ### Building for Production
 
 ```bash

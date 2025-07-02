@@ -1,7 +1,151 @@
+/* Configuration Window Styles */
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica,
     Arial, sans-serif;
-  margin: auto;
-  max-width: 38rem;
-  padding: 2rem;
+  margin: 0;
+  padding: 0;
+  background-color: var(--background-color, #ffffff);
+  color: var(--text-color, #000000);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  body {
+    --background-color: #1e1e1e;
+    --text-color: #ffffff;
+    --secondary-text-color: #a0a0a0;
+    --input-background: #2d2d2d;
+    --button-background: #0066cc;
+    --button-hover: #0052a3;
+  }
+}
+
+/* Light mode support */
+@media (prefers-color-scheme: light) {
+  body {
+    --background-color: #ffffff;
+    --text-color: #000000;
+    --secondary-text-color: #666666;
+    --input-background: #ffffff;
+    --button-background: #007aff;
+    --button-hover: #0056cc;
+  }
+}
+
+.config-container {
+  max-width: 400px;
+  margin: 0 auto;
+  padding: 32px;
+}
+
+h1 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  color: var(--text-color);
+}
+
+.description {
+  font-size: 13px;
+  color: var(--secondary-text-color, #666666);
+  margin: 0 0 24px 0;
+  line-height: 1.5;
+}
+
+.form-group {
+  margin-bottom: 24px;
+}
+
+label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: var(--text-color);
+}
+
+input[type="password"] {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d1d6;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  background-color: var(--input-background, #ffffff);
+  color: var(--text-color);
+  box-sizing: border-box;
+  transition: border-color 0.2s ease;
+}
+
+input[type="password"]:focus {
+  outline: none;
+  border-color: var(--button-background, #007aff);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  input[type="password"] {
+    border-color: #48484a;
+  }
+  
+  input[type="password"]:focus {
+    border-color: var(--button-background, #0066cc);
+    box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.2);
+  }
+}
+
+.form-actions {
+  text-align: right;
+  margin-top: 24px;
+}
+
+.primary-button {
+  background-color: var(--button-background, #007aff);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.primary-button:hover {
+  background-color: var(--button-hover, #0056cc);
+}
+
+.primary-button:active {
+  transform: translateY(1px);
+}
+
+.primary-button:disabled {
+  background-color: #d1d1d6;
+  cursor: not-allowed;
+}
+
+.status-message {
+  margin-top: 16px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.status-message.success {
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.status-message.error {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.status-message.hidden {
+  display: none;
 }

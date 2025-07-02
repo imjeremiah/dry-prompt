@@ -12,7 +12,13 @@
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx ."
   },
-  "keywords": ["electron", "ai", "productivity", "automation", "macos"],
+  "keywords": [
+    "electron",
+    "ai",
+    "productivity",
+    "automation",
+    "macos"
+  ],
   "author": {
     "name": "Jeremiah Candelaria",
     "email": "52246955+imjeremiah@users.noreply.github.com"
@@ -45,5 +51,8 @@
     "dotenv": "^17.0.1",
     "electron-squirrel-startup": "^1.0.1",
     "keytar": "^7.9.0"
+  },
+  "optionalDependencies": {
+    "iohook": "^0.9.3"
   }
 }
