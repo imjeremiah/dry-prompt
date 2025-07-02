@@ -10,7 +10,12 @@
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
-    "lint": "eslint --ext .ts,.tsx ."
+    "lint": "eslint --ext .ts,.tsx .",
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:dir": "electron-builder --dir",
+    "dist": "npm run build",
+    "release": "npm run build && electron-builder --publish=always"
   },
   "keywords": [
     "electron",
@@ -37,6 +42,7 @@
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "electron": "37.1.0",
+    "electron-builder": "^26.0.12",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.32.0",
     "ts-node": "^10.9.2",
@@ -56,5 +62,56 @@
   },
   "optionalDependencies": {
     "uiohook-napi": "^1.5.4"
+  },
+  "build": {
+    "appId": "com.dryfound.dryprompt",
+    "productName": "DryPrompt",
+    "copyright": "Copyright © 2024 Jeremiah Candelaria",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      ".vite/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "src/renderer/assets/icon.icns",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "notarize": {
+        "teamId": "${APPLE_TEAM_ID}"
+      }
+    },
+    "dmg": {
+      "title": "${productName} ${version}",
+      "icon": "src/renderer/assets/icon.icns",
+      "background": "build/background.png",
+      "contents": [
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "imjeremiah",
+      "repo": "dry-prompt"
+    }
   }
 }

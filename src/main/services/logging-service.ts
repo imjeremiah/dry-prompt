@@ -178,6 +178,91 @@ export async function getLogEntryCount(): Promise<number> {
 }
 
 /**
+ * Archives the current log (alias for archivePromptLog for consistency)
+ * @returns Promise resolving to the path of the archived file
+ */
+export async function archiveCurrentLog(): Promise<string | null> {
+  return await archivePromptLog();
+}
+
+/**
+ * Gets information about archived log files
+ * @returns Promise resolving to array of archive file information
+ */
+export async function getArchiveInfo(): Promise<Array<{
+  filename: string;
+  path: string;
+  size: number;
+  created: Date;
+}>> {
+  try {
+    ensureDirectoriesExist();
+    const archiveDir = getArchiveDir();
+    
+    if (!fs.existsSync(archiveDir)) {
+      return [];
+    }
+    
+    const files = fs.readdirSync(archiveDir);
+    const archiveFiles = files
+      .filter(file => file.startsWith('prompt_log_') && file.endsWith('.json'))
+      .map(filename => {
+        const filePath = path.join(archiveDir, filename);
+        const stats = fs.statSync(filePath);
+        
+        return {
+          filename,
+          path: filePath,
+          size: stats.size,
+          created: stats.birthtime
+        };
+      })
+      .sort((a, b) => b.created.getTime() - a.created.getTime()); // Newest first
+    
+    return archiveFiles;
+    
+  } catch (error) {
+    console.error('Failed to get archive info:', error);
+    return [];
+  }
+}
+
+/**
+ * Cleans up old archive files (keeps only the most recent N files)
+ * @param keepCount - Number of archive files to keep (default: 10)
+ * @returns Promise resolving to number of files deleted
+ */
+export async function cleanupOldArchives(keepCount: number = 10): Promise<number> {
+  try {
+    const archives = await getArchiveInfo();
+    
+    if (archives.length <= keepCount) {
+      return 0; // Nothing to clean up
+    }
+    
+    const filesToDelete = archives.slice(keepCount);
+    let deletedCount = 0;
+    
+    for (const file of filesToDelete) {
+      try {
+        fs.unlinkSync(file.path);
+        deletedCount++;
+        console.log(`Deleted old archive: ${file.filename}`);
+      } catch (error) {
+        console.error(`Failed to delete archive ${file.filename}:`, error);
+      }
+    }
+    
+    console.log(`Cleaned up ${deletedCount} old archive files`);
+    return deletedCount;
+    
+  } catch (error) {
+    console.error('Failed to cleanup old archives:', error);
+    return 0;
+  }
+}
+
+/**
  * Clears all log entries (for testing or manual reset)
  * @returns Promise resolving when clearing is complete
  */

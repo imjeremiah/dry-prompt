@@ -56,7 +56,11 @@ export async function initializeSupabase(): Promise<boolean> {
     const { error } = await supabaseClient.from('suggestions').select('count').limit(1);
     
     if (error) {
-      console.warn('Supabase connection test failed:', error.message);
+      if (error.message.includes('relation') && error.message.includes('does not exist')) {
+        console.warn('Supabase database tables not set up yet. See SUPABASE_SETUP.md for instructions.');
+      } else {
+        console.warn('Supabase connection test failed:', error.message);
+      }
       isConnectionValid = false;
       return false;
     }

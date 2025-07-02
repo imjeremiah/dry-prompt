@@ -19,28 +19,25 @@ export async function checkShortcutExists(trigger: string): Promise<boolean> {
   }
 
   // Use a simpler approach that doesn't open System Preferences UI
-  const script = `
-    tell application "System Events"
-      tell property list file "~/Library/Preferences/.GlobalPreferences.plist"
+  const script = `tell application "System Events"
+  tell property list file "~/Library/Preferences/.GlobalPreferences.plist"
+    try
+      set textReplacements to value of property list item "NSUserReplacementItems"
+      repeat with replacement in textReplacements
         try
-          set textReplacements to value of property list item "NSUserReplacementItems"
-          repeat with replacement in textReplacements
-            try
-              set replaceValue to value of property list item "replace" of replacement
-              if replaceValue is equal to "${trigger.replace(/"/g, '\\"')}" then
-                return true
-              end if
-            on error
-              -- Skip items that don't have the expected structure
-            end try
-          end repeat
-          return false
+          set replaceValue to value of property list item "replace" of replacement
+          if replaceValue is equal to "${trigger.replace(/"/g, '\\"')}" then
+            return true
+          end if
         on error
-          return false
         end try
-      end tell
-    end tell
-  `;
+      end repeat
+      return false
+    on error
+      return false
+    end try
+  end tell
+end tell`;
 
   try {
     console.log(`Checking if shortcut exists: ${trigger}`);
@@ -70,33 +67,23 @@ export async function createTextReplacement(trigger: string, replacement: string
   const escapedTrigger = trigger.replace(/"/g, '\\"').replace(/\\/g, '\\\\');
   const escapedReplacement = replacement.replace(/"/g, '\\"').replace(/\\/g, '\\\\');
 
-  const script = `
-    tell application "System Events"
-      tell property list file "~/Library/Preferences/.GlobalPreferences.plist"
-        try
-          -- Get existing replacements or create empty list
-          try
-            set textReplacements to value of property list item "NSUserReplacementItems"
-          on error
-            set textReplacements to {}
-          end try
-          
-          -- Create new replacement item
-          set newReplacement to {replace:"${escapedTrigger}", with:"${escapedReplacement}", on:1}
-          
-          -- Add to existing replacements
-          set textReplacements to textReplacements & {newReplacement}
-          
-          -- Update the property list
-          set value of property list item "NSUserReplacementItems" to textReplacements
-          
-          return true
-        on error errorMessage
-          return false
-        end try
-      end tell
-    end tell
-  `;
+  const script = `tell application "System Events"
+  tell property list file "~/Library/Preferences/.GlobalPreferences.plist"
+    try
+      try
+        set textReplacements to value of property list item "NSUserReplacementItems"
+      on error
+        set textReplacements to {}
+      end try
+      set newReplacement to {replace:"${escapedTrigger}", with:"${escapedReplacement}", on:1}
+      set textReplacements to textReplacements & {newReplacement}
+      set value of property list item "NSUserReplacementItems" to textReplacements
+      return true
+    on error errorMessage
+      return false
+    end try
+  end tell
+end tell`;
 
   try {
     console.log(`Creating text replacement: ${trigger} → ${replacement}`);

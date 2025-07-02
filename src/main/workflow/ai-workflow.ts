@@ -359,6 +359,12 @@ function routeWorkflow(state: WorkflowState): string {
   // Continue based on what data we have
   if (!state.startTime) return 'initializeWorkflow';
   if (!state.logEntries) return 'loadLogEntries';
+  
+  // Check if logEntries is empty (prevent infinite loop)
+  if (state.logEntries && state.logEntries.length === 0) {
+    return 'storeResults';
+  }
+  
   if (!state.embeddings) return 'embedding';
   if (!state.clusters) return 'clustering';
   if (!state.suggestions) return 'synthesis';
