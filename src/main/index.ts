@@ -13,9 +13,18 @@ let tray: Tray | null = null;
  * Creates and configures the system tray icon with context menu
  */
 const createTray = () => {
-  // Load the icon for the menu bar
-  const iconPath = path.join(__dirname, '../renderer/assets/icon.svg');
-  const icon = nativeImage.createFromPath(iconPath);
+  // Create a simple template icon for the menu bar
+  // This creates a small 16x16 icon with three horizontal lines
+  const iconData = Buffer.from(`
+    <svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+      <rect x="2" y="4" width="12" height="1" fill="black"/>
+      <rect x="2" y="7" width="8" height="1" fill="black"/>
+      <rect x="2" y="10" width="10" height="1" fill="black"/>
+    </svg>
+  `);
+  
+  const icon = nativeImage.createFromBuffer(iconData);
+  icon.setTemplateImage(true); // This makes it adapt to menu bar appearance
   
   // Create the tray instance
   tray = new Tray(icon);

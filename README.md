@@ -1,46 +1,92 @@
 # DryPrompt
 
-DryPrompt is a macOS desktop application that runs silently in the background to learn your typing habits and proactively suggest creating native macOS Keyboard Text Replacements to automate your repetitive phrases. It turns the tedious manual task of creating shortcuts into an intelligent, automated one.
+**AI-powered desktop application that learns your typing habits and automates repetitive prompts**
 
-## Core Features
+DryPrompt is a macOS desktop application that runs silently in the background, monitoring text input and using AI to identify repeated prompts. When patterns are discovered, it proactively suggests creating native macOS Keyboard Text Replacements to automate repetitive typing.
 
-*   **Silent Background Monitoring**: Intelligently monitors specified applications (initially `Cursor.app`) for repetitive text input.
-*   **Local AI Analysis**: Uses a local **LangGraph.js** workflow to find and synthesize repeated phrases without sending your keystrokes to the cloud.
-*   **Proactive Shortcut Suggestions**: Generates native macOS notifications with suggestions for creating keyboard text replacements.
-*   **Secure & Native**: Stores API keys securely in the macOS Keychain and integrates seamlessly into the menu bar for an unobtrusive experience.
+## Project Status
 
-## Tech Stack
+### ✅ Phase 1: Project Setup & Foundation (COMPLETED)
+- [x] Electron application initialized with TypeScript and Vite
+- [x] Complete project directory structure established
+- [x] Basic menu bar application with system tray
+- [x] Core dependencies installed (LangGraph, OpenAI API, Supabase, etc.)
+- [x] Build system and development environment configured
+- [x] Version control setup with Git
 
-Our stack is built to be secure, robust, and scalable, leveraging the best of desktop and AI technologies:
+### 🚧 Phase 2: Precision Monitoring Engine (Next)
+- [ ] Process monitor for Cursor.app
+- [ ] Active window monitoring
+- [ ] Keyboard input capture (with Accessibility permissions)
+- [ ] Secure local data storage
 
-*   **Core**: Electron, TypeScript, Vite, Node.js
-*   **AI & Workflow**: LangGraph.js, OpenAI API, ml-js
-*   **Data Persistence**: Supabase
-*   **System Integration**: `keytar`, `active-win`, `iohook`
+### 🔄 Phase 3: AI Workflow Implementation
+- [ ] LangGraph.js workflow setup
+- [ ] OpenAI API integration for embeddings and clustering
+- [ ] ml-js DBSCAN clustering implementation
+- [ ] Supabase database integration
 
-## Project Conventions
+## Development
 
-This project follows a strict set of rules to ensure the codebase remains clean, modular, and easy to navigate.
+### Prerequisites
+- Node.js (v18 or higher)
+- macOS (required for system integrations)
+- OpenAI API key (stored in `.env`)
+- Supabase project credentials (stored in `.env`)
 
-### Directory Structure
+### Running the Application
+
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+2. **Start development server:**
+   ```bash
+   npm run dev
+   ```
+
+3. **The application will appear as a menu bar icon** (three horizontal lines) in your macOS menu bar. Right-click the icon to see the context menu with options including "Quit".
+
+### Building for Production
+
+```bash
+npm run make
 ```
-src/
-├── main/       # Backend logic, OS integration, and AI workflows
-├── renderer/   # UI-facing code
-├── preload/    # Secure scripts for IPC
-└── common/     # Shared types and interfaces
-```
 
-### Key Rules
-*   **AI-First Codebase**: All code is thoroughly documented (TSDoc) and modularized into single-responsibility files.
-*   **File Size Limit**: Files must not exceed 500 lines.
-*   **Functional Programming**: We prefer functional patterns over classes.
-*   **Conventional Commits**: Git history is kept clean and readable.
+This creates a distributable `.dmg` file in the `out/` directory.
 
-For more details, please refer to the complete documentation in the `project-brief.md` and other documentation files.
+## Architecture
 
-## Getting Started
+The application follows a secure, modular architecture:
 
-1.  Clone the repository.
-2.  Install dependencies: `npm install`
-3.  Run the development server: `npm run dev` 
+- **Main Process** (`src/main/`): Handles OS integration, system monitoring, and AI workflow
+- **Renderer Process** (`src/renderer/`): UI components (minimal for this menu bar app)
+- **Preload Scripts** (`src/preload/`): Secure bridge between main and renderer processes
+- **Services** (`src/main/services/`): Modular services for different system integrations
+- **Workflow** (`src/main/workflow/`): LangGraph.js AI analysis workflow
+
+## Security & Privacy
+
+- All system monitoring requires explicit user permission (Accessibility API)
+- API keys stored securely in macOS Keychain
+- Local data processing with minimal cloud dependencies
+- Captured text stored only in application's private user data directory
+
+## Technology Stack
+
+- **Framework**: Electron with TypeScript
+- **Build System**: Vite
+- **AI Workflow**: LangGraph.js
+- **AI Models**: OpenAI GPT-4o and text-embedding-3-small
+- **Database**: Supabase
+- **System Integration**: Native macOS APIs via Node.js
+- **Clustering**: ml-js DBSCAN algorithm
+
+## License
+
+MIT License - see LICENSE file for details.
+
+---
+
+*This project represents the cutting edge of productivity tools by leveraging local processing power, persistent background operations, and intelligent automation in a way that web and mobile apps simply can't match.* 
