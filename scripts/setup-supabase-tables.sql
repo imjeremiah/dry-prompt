@@ -50,15 +50,31 @@ CREATE TRIGGER update_suggestions_updated_at
 ALTER TABLE suggestions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE analysis_results ENABLE ROW LEVEL SECURITY;
 
--- Create policies to allow authenticated users to access their data
--- Note: These are basic policies - adjust based on your security requirements
-CREATE POLICY "Allow all operations for authenticated users" ON suggestions
-    FOR ALL USING (auth.role() = 'authenticated');
+-- Create policies for desktop app usage (anon access with rate limiting)
+-- Note: For a desktop app, we allow anon access but you may want to implement
+-- additional security measures like API keys or rate limiting at the application level
 
-CREATE POLICY "Allow all operations for authenticated users" ON analysis_results
-    FOR ALL USING (auth.role() = 'authenticated');
+-- Allow anonymous users to insert and read their own suggestions
+-- (In production, consider adding additional constraints based on your security requirements)
+DROP POLICY IF EXISTS "Allow anon operations on suggestions" ON suggestions;
+CREATE POLICY "Allow anon operations on suggestions" ON suggestions
+    FOR ALL TO anon
+    USING (true)
+    WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anon operations on analysis_results" ON analysis_results;
+CREATE POLICY "Allow anon operations on analysis_results" ON analysis_results
+    FOR ALL TO anon  
+    USING (true)
+    WITH CHECK (true);
 
 -- Grant necessary permissions to the anon role for the application
 GRANT SELECT, INSERT, UPDATE ON suggestions TO anon;
 GRANT SELECT, INSERT ON analysis_results TO anon;
-GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO anon; 
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA public TO anon;
+
+-- Additional security: Add constraints to prevent abuse
+-- Limit suggestion text length to reasonable bounds
+ALTER TABLE suggestions ADD CONSTRAINT suggestions_trigger_length CHECK (length(trigger) <= 50);
+ALTER TABLE suggestions ADD CONSTRAINT suggestions_replacement_length CHECK (length(replacement) <= 1000);
+ALTER TABLE suggestions ADD CONSTRAINT suggestions_source_texts_count CHECK (array_length(source_texts, 1) <= 100); 

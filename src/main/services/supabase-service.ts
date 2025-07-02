@@ -4,8 +4,10 @@
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import * as fs from 'fs';
-import * as path from 'path';
+import { config } from 'dotenv';
+
+// Load environment variables from .env file
+config();
 
 // Interface for suggestion data stored in database
 interface SuggestionRecord {
@@ -38,32 +40,12 @@ let isConnectionValid = false;
  */
 export async function initializeSupabase(): Promise<boolean> {
   try {
-    // Read environment variables from .env file
-    const envPath = path.join(process.cwd(), '.env');
-    
-    if (!fs.existsSync(envPath)) {
-      console.warn('No .env file found, Supabase functionality will be disabled');
-      return false;
-    }
-    
-    const envContent = fs.readFileSync(envPath, 'utf8');
-    const envLines = envContent.split('\n');
-    
-    let supabaseUrl = '';
-    let supabaseKey = '';
-    
-    // Parse environment variables
-    for (const line of envLines) {
-      const [key, value] = line.split('=');
-      if (key === 'SUPABASE_URL') {
-        supabaseUrl = value?.trim() || '';
-      } else if (key === 'SUPABASE_ANON_KEY') {
-        supabaseKey = value?.trim() || '';
-      }
-    }
+    // Get environment variables
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_ANON_KEY;
     
     if (!supabaseUrl || !supabaseKey) {
-      console.warn('Supabase credentials not found in .env file');
+      console.warn('Supabase credentials not found in environment variables. Please check your .env file.');
       return false;
     }
     

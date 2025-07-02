@@ -23,7 +23,7 @@ interface ClusterResult {
 // Configuration for DBSCAN clustering algorithm
 const DBSCAN_CONFIG = {
   epsilon: 0.3,              // Maximum distance between two samples for them to be considered neighbors
-  minPoints: 2,              // TEMPORARILY LOWERED: Minimum number of points required to form a dense region (cluster)
+  minPoints: 3,              // Minimum number of points required to form a dense region (cluster)
   maxClusters: 10,           // Maximum number of clusters to return
   distanceFunction: 'cosine' // Distance function to use for clustering
 };

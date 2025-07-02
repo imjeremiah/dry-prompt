@@ -18,38 +18,22 @@ export async function checkShortcutExists(trigger: string): Promise<boolean> {
     throw new Error('Trigger must be a non-empty string');
   }
 
-  // For now, skip the actual checking and return false to avoid AppleScript errors
-  // This allows the notification system to work while we debug the AppleScript
-  console.log(`Skipping shortcut check for: ${trigger} (AppleScript debugging)`);
-  return false;
-  
-  /* COMMENTED OUT UNTIL APPLESCRIPT IS FIXED:
+  // Use a simpler approach that doesn't open System Preferences UI
   const script = `
-    tell application "System Preferences"
-      reveal pane "Keyboard"
-    end tell
-    
     tell application "System Events"
-      tell process "System Preferences"
+      tell property list file "~/Library/Preferences/.GlobalPreferences.plist"
         try
-          click button "Text" of tab group 1 of window 1
-          delay 0.5
-          
-          -- Get the text replacement table
-          set replacementTable to table 1 of scroll area 1 of tab group 1 of window 1
-          
-          -- Check each row for the trigger
-          repeat with currentRow in rows of replacementTable
+          set textReplacements to value of property list item "NSUserReplacementItems"
+          repeat with replacement in textReplacements
             try
-              set cellValue to value of text field 1 of currentRow
-              if cellValue is equal to "${trigger.replace(/"/g, '\\"')}" then
+              set replaceValue to value of property list item "replace" of replacement
+              if replaceValue is equal to "${trigger.replace(/"/g, '\\"')}" then
                 return true
               end if
             on error
-              -- Skip rows that don't have the expected structure
+              -- Skip items that don't have the expected structure
             end try
           end repeat
-          
           return false
         on error
           return false
@@ -69,7 +53,6 @@ export async function checkShortcutExists(trigger: string): Promise<boolean> {
     // Return false on error to avoid blocking suggestions
     return false;
   }
-  */
 }
 
 /**
@@ -83,49 +66,29 @@ export async function createTextReplacement(trigger: string, replacement: string
     throw new Error('Both trigger and replacement must be non-empty strings');
   }
 
-  // For now, simulate successful creation to avoid AppleScript errors
-  console.log(`Simulating text replacement creation: ${trigger} → ${replacement}`);
-  console.log('(AppleScript integration temporarily disabled for testing)');
-  return true;
-  
-  /* COMMENTED OUT UNTIL APPLESCRIPT IS FIXED:
-  // Escape quotes in the text
-  const escapedTrigger = trigger.replace(/"/g, '\\"');
-  const escapedReplacement = replacement.replace(/"/g, '\\"');
+  // Escape quotes and special characters in the text
+  const escapedTrigger = trigger.replace(/"/g, '\\"').replace(/\\/g, '\\\\');
+  const escapedReplacement = replacement.replace(/"/g, '\\"').replace(/\\/g, '\\\\');
 
   const script = `
-    tell application "System Preferences"
-      reveal pane "Keyboard"
-    end tell
-    
     tell application "System Events"
-      tell process "System Preferences"
+      tell property list file "~/Library/Preferences/.GlobalPreferences.plist"
         try
-          click button "Text" of tab group 1 of window 1
-          delay 0.5
+          -- Get existing replacements or create empty list
+          try
+            set textReplacements to value of property list item "NSUserReplacementItems"
+          on error
+            set textReplacements to {}
+          end try
           
-          -- Click the + button to add a new replacement
-          click button "+" of tab group 1 of window 1
-          delay 0.5
+          -- Create new replacement item
+          set newReplacement to {replace:"${escapedTrigger}", with:"${escapedReplacement}", on:1}
           
-          -- Get the text replacement table
-          set replacementTable to table 1 of scroll area 1 of tab group 1 of window 1
+          -- Add to existing replacements
+          set textReplacements to textReplacements & {newReplacement}
           
-          -- Select the new row (should be the last one)
-          set lastRow to last row of replacementTable
-          select lastRow
-          
-          -- Enter the trigger text in the "Replace" field
-          set value of text field 1 of lastRow to "${escapedTrigger}"
-          
-          -- Tab to the "With" field and enter replacement text
-          key code 48 -- Tab key
-          delay 0.2
-          set value of text field 2 of lastRow to "${escapedReplacement}"
-          
-          -- Press Enter to confirm
-          key code 36 -- Enter key
-          delay 0.2
+          -- Update the property list
+          set value of property list item "NSUserReplacementItems" to textReplacements
           
           return true
         on error errorMessage
@@ -142,6 +105,9 @@ export async function createTextReplacement(trigger: string, replacement: string
     
     if (success) {
       console.log(`Successfully created text replacement: ${trigger}`);
+      
+      // Notify the system to reload text replacements
+      await execAsync('defaults read com.apple.HIToolbox AppleEnabledInputSources');
     } else {
       console.log(`Failed to create text replacement: ${trigger}`);
     }
@@ -151,7 +117,6 @@ export async function createTextReplacement(trigger: string, replacement: string
     console.error('Error creating text replacement:', error);
     return false;
   }
-  */
 }
 
 /**

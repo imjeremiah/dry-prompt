@@ -465,34 +465,42 @@ function isLikelyPrompt(text: string): boolean {
     return false;
   }
   
-  // TEMPORARY: For testing, accept all text that meets length requirements
-  // This allows us to test with "hello world test" type messages
-  console.log(`Prompt filter: accepting "${text}" for testing purposes`);
-  return true;
+  // Filter out text that's just repetitive characters
+  const uniqueChars = new Set(text.toLowerCase()).size;
+  if (uniqueChars < 4) {
+    console.log(`Prompt filter: rejected "${text}" (too few unique characters: ${uniqueChars})`);
+    return false;
+  }
   
-  // ORIGINAL LOGIC (commented out for testing):
-  // // Filter out text that's just repetitive characters
-  // const uniqueChars = new Set(text.toLowerCase()).size;
-  // if (uniqueChars < 4) {
-  //   return false;
-  // }
-  // 
-  // // Look for prompt-like patterns
-  // const promptIndicators = [
-  //   'explain', 'describe', 'how', 'what', 'why', 'create', 'generate',
-  //   'write', 'make', 'build', 'show', 'tell me', 'can you', 'please',
-  //   'review', 'check', 'debug', 'fix', 'help', 'analyze'
-  // ];
-  // 
-  // const lowerText = text.toLowerCase();
-  // const hasPromptIndicator = promptIndicators.some(indicator => 
-  //   lowerText.includes(indicator)
-  // );
-  // 
-  // // Also accept text that ends with question marks or colons (common in prompts)
-  // const hasPromptEnding = /[?:]$/.test(text.trim());
-  // 
-  // return hasPromptIndicator || hasPromptEnding;
+  // Look for prompt-like patterns
+  const promptIndicators = [
+    'explain', 'describe', 'how', 'what', 'why', 'create', 'generate',
+    'write', 'make', 'build', 'show', 'tell me', 'can you', 'please',
+    'review', 'check', 'debug', 'fix', 'help', 'analyze', 'refactor',
+    'implement', 'add', 'remove', 'update', 'modify', 'optimize',
+    'convert', 'translate', 'format', 'validate', 'test', 'document'
+  ];
+  
+  const lowerText = text.toLowerCase();
+  const hasPromptIndicator = promptIndicators.some(indicator => 
+    lowerText.includes(indicator)
+  );
+  
+  // Also accept text that ends with question marks or colons (common in prompts)
+  const hasPromptEnding = /[?:]$/.test(text.trim());
+  
+  // Accept text that looks like a command or instruction
+  const looksLikeCommand = /^(add|create|make|build|fix|update|remove|delete|show|display|list|find|search|get|set)\s+/i.test(text.trim());
+  
+  const isPromptLike = hasPromptIndicator || hasPromptEnding || looksLikeCommand;
+  
+  if (isPromptLike) {
+    console.log(`Prompt filter: accepted "${text.substring(0, 50)}..." (matched criteria)`);
+  } else {
+    console.log(`Prompt filter: rejected "${text.substring(0, 50)}..." (no prompt indicators)`);
+  }
+  
+  return isPromptLike;
 }
 
 /**
