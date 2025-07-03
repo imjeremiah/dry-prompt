@@ -674,18 +674,40 @@ export async function manualTextLog(text: string, context?: string): Promise<voi
 export async function addSampleData(): Promise<void> {
   console.log('Adding sample data for testing...');
   
-  // Add multiple similar test phrases that would cluster together
+  // Create multiple clusters of realistic prompts that users actually type
   const testPhrases = [
-    'hello world test',
-    'hello world example', 
-    'hello world demo',
-    'hello world sample',
-    'test hello world',
-    'simple hello world',
-    'basic hello world test',
-    'quick hello world check',
-    'hello world trial run',
-    'hello world verification'
+    // Cluster 1: Code explanation requests (4 items)
+    'explain how this function works',
+    'explain what this code does',
+    'help me understand how this works',
+    'can you explain this function to me',
+    
+    // Cluster 2: Code review requests (4 items)
+    'review this code for bugs',
+    'please review this code',
+    'can you review this implementation',
+    'check this code for issues',
+    
+    // Cluster 3: Debugging help (4 items)
+    'help me debug this error',
+    'why is this code not working',
+    'help me fix this bug',
+    'debug this issue please',
+    
+    // Cluster 4: Code optimization (3 items)
+    'optimize this function',
+    'make this code more efficient',
+    'improve this implementation',
+    
+    // Cluster 5: Documentation requests (3 items)
+    'add comments to this code',
+    'document this function',
+    'write documentation for this',
+    
+    // Cluster 6: Log analysis requests (3 items)
+    'see logs, analyze deeply, and tell me what\'s going on? what seems to be the issue? do not code, just talk about what\'s going on, and how we can address',
+    'check the logs i attached, find what the promblems are, why are we getting these errors? do not code, just discuss, how can we approach fixing what\'s broken?',
+    'see logs above, do not code, just think and talk- what is going on? why are we getting these errros, and how can we correct them??'
   ];
   
   try {
@@ -697,7 +719,8 @@ export async function addSampleData(): Promise<void> {
       );
       console.log(`Added test phrase: "${phrase}"`);
     }
-    console.log(`✅ Added ${testPhrases.length} similar test phrases for clustering`);
+    console.log(`✅ Added ${testPhrases.length} diverse test phrases for clustering`);
+    console.log(`Expected clusters: 6 clusters (Code Explanation, Code Review, Debugging, Optimization, Documentation, Log Analysis)`);
   } catch (error) {
     console.error('Error adding sample data:', error);
   }

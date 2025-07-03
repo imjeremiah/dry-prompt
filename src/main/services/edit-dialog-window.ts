@@ -27,6 +27,13 @@ interface EditDialogCallbacks {
   onCancel: () => void;
 }
 
+// Interface for multi-suggestion edit dialog callbacks
+interface MultiSuggestionEditDialogCallbacks {
+  onConfirm: (editedSuggestion: SuggestionData, suggestionIndex: number) => void;
+  onReject: (suggestionIndex: number) => void;
+  onCancel: () => void;
+}
+
 // Interface for validation results
 interface ValidationResult {
   isValid: boolean;
@@ -146,6 +153,220 @@ export async function createEditDialog(
 }
 
 /**
+ * Creates and displays an edit dialog for reviewing multiple suggestions with navigation
+ * @param suggestions - Array of AI-generated suggestions to review
+ * @param callbacks - Callbacks for user actions
+ * @returns Promise resolving when dialog is created
+ */
+export async function createMultiSuggestionEditDialog(
+  suggestions: SuggestionData[], 
+  callbacks: MultiSuggestionEditDialogCallbacks
+): Promise<void> {
+  if (!suggestions || suggestions.length === 0) {
+    throw new Error('No suggestions provided for multi-suggestion dialog');
+  }
+
+  // Force cleanup of any existing edit dialog and handlers
+  if (currentEditWindow && !currentEditWindow.isDestroyed()) {
+    console.log('Closing existing edit dialog window');
+    currentEditWindow.close();
+    currentEditWindow = null;
+  }
+  
+  // Force cleanup of IPC handlers
+  cleanupEditDialogIpcHandlers();
+  
+  // Wait a moment for cleanup to complete
+  await new Promise(resolve => setTimeout(resolve, 100));
+
+  const windowTitle = `Review Shortcuts (${suggestions.length}) - DryPrompt`;
+
+  currentEditWindow = new BrowserWindow({
+    width: 520,
+    height: 650, // Slightly taller for navigation elements
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    title: windowTitle,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
+    },
+  });
+
+  // Set up IPC handlers for the multi-suggestion dialog
+  setupMultiSuggestionIpcHandlers(suggestions, callbacks);
+
+  // Load the edit dialog with multi-suggestion hash
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    console.log(`Loading multi-suggestion edit dialog from dev server: ${MAIN_WINDOW_VITE_DEV_SERVER_URL}/#multi-edit-dialog`);
+    await currentEditWindow.loadURL(`${MAIN_WINDOW_VITE_DEV_SERVER_URL}/#multi-edit-dialog`);
+  } else {
+    const htmlPath = path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`);
+    console.log(`Loading multi-suggestion edit dialog from file: ${htmlPath} with hash #multi-edit-dialog`);
+    await currentEditWindow.loadFile(htmlPath, { hash: '#multi-edit-dialog' });
+  }
+
+  // Send the suggestions data to the renderer once ready
+  currentEditWindow.webContents.once('did-finish-load', () => {
+    console.log('Multi-suggestion edit dialog finished loading - sending suggestions data');
+    populateMultiSuggestionForm(suggestions);
+  });
+
+  // Backup method - populate after a delay
+  setTimeout(() => {
+    console.log('Backup timer - force populating multi-suggestion form after 1 second');
+    populateMultiSuggestionForm(suggestions);
+  }, 1000);
+
+  // Clean up when window is closed
+  currentEditWindow.on('closed', () => {
+    cleanupEditDialogIpcHandlers();
+    currentEditWindow = null;
+  });
+
+  // Prevent new window creation
+  currentEditWindow.webContents.setWindowOpenHandler(() => {
+    return { action: 'deny' };
+  });
+
+  console.log(`Multi-suggestion edit dialog created for ${suggestions.length} suggestions`);
+}
+
+/**
+ * Sets up IPC handlers specific to the multi-suggestion edit dialog
+ * @param suggestions - Array of suggestions being reviewed
+ * @param callbacks - Dialog callbacks
+ */
+function setupMultiSuggestionIpcHandlers(
+  suggestions: SuggestionData[], 
+  callbacks: MultiSuggestionEditDialogCallbacks
+): void {
+  // Clean up any existing handlers first
+  if (ipcHandlersRegistered) {
+    cleanupEditDialogIpcHandlers();
+  }
+
+  try {
+    // Handle trigger validation
+    ipcMain.handle('validate-trigger', async (event, trigger: string): Promise<ValidationResult> => {
+      return await validateTrigger(trigger);
+    });
+
+    // Handle replacement text validation
+    ipcMain.handle('validate-replacement', async (event, replacement: string): Promise<ValidationResult> => {
+      return validateReplacementText(replacement);
+    });
+
+    // Handle navigation between suggestions
+    ipcMain.handle('get-suggestions-data', async () => {
+      return { suggestions, count: suggestions.length };
+    });
+
+    // Handle dialog confirmation for specific suggestion
+    ipcMain.handle('confirm-suggestion', async (event, data: { 
+      suggestionIndex: number;
+      editedData: { trigger: string; replacement: string };
+    }) => {
+      try {
+        const { suggestionIndex, editedData } = data;
+        const originalSuggestion = suggestions[suggestionIndex];
+        
+        if (!originalSuggestion) {
+          return { success: false, error: 'Invalid suggestion index' };
+        }
+
+        // Create the edited suggestion object
+        const editedSuggestion: SuggestionData = {
+          trigger: editedData.trigger.trim(),
+          replacement: editedData.replacement.trim(),
+          sourceTexts: originalSuggestion.sourceTexts || [],
+          confidence: originalSuggestion.confidence || 1.0,
+          suggestionId: originalSuggestion.suggestionId
+        };
+
+        console.log(`User confirmed suggestion ${suggestionIndex + 1}: ${editedSuggestion.trigger}`);
+        callbacks.onConfirm(editedSuggestion, suggestionIndex);
+        
+        return { success: true };
+      } catch (error) {
+        console.error('Error confirming suggestion:', error);
+        return { success: false, error: 'Failed to process suggestion confirmation' };
+      }
+    });
+
+    // Handle rejection of specific suggestion
+    ipcMain.handle('reject-suggestion', async (event, suggestionIndex: number) => {
+      try {
+        if (suggestionIndex < 0 || suggestionIndex >= suggestions.length) {
+          return { success: false, error: 'Invalid suggestion index' };
+        }
+
+        console.log(`User rejected suggestion ${suggestionIndex + 1}`);
+        callbacks.onReject(suggestionIndex);
+        
+        return { success: true };
+      } catch (error) {
+        console.error('Error rejecting suggestion:', error);
+        return { success: false, error: 'Failed to process suggestion rejection' };
+      }
+    });
+
+    // Handle dialog cancellation (reject all)
+    ipcMain.handle('cancel-multi-edit', async () => {
+      try {
+        console.log(`User cancelled review for ${suggestions.length} suggestions`);
+        callbacks.onCancel();
+        
+        // Close the dialog
+        if (currentEditWindow && !currentEditWindow.isDestroyed()) {
+          currentEditWindow.close();
+        }
+
+        return { success: true };
+      } catch (error) {
+        console.error('Error cancelling multi-edit:', error);
+        return { success: false, error: 'Failed to cancel multi-edit' };
+      }
+    });
+
+    ipcHandlersRegistered = true;
+    console.log('Multi-suggestion edit dialog IPC handlers registered successfully');
+    
+  } catch (error) {
+    console.error('Error setting up multi-suggestion edit dialog IPC handlers:', error);
+    throw error;
+  }
+}
+
+/**
+ * Populates the multi-suggestion edit dialog with suggestions data
+ * @param suggestions - Array of suggestions to populate
+ */
+function populateMultiSuggestionForm(suggestions: SuggestionData[]): void {
+  if (!currentEditWindow || currentEditWindow.isDestroyed()) {
+    console.error('Cannot populate multi-suggestion form - edit window not available');
+    return;
+  }
+
+  console.log('Populating multi-suggestion form with', suggestions.length, 'suggestions');
+
+  // Send suggestions data to renderer
+  try {
+    currentEditWindow.webContents.send('load-multi-suggestions', { 
+      suggestions,
+      count: suggestions.length 
+    });
+    console.log('Sent load-multi-suggestions IPC message');
+  } catch (error) {
+    console.error('Error sending load-multi-suggestions IPC:', error);
+  }
+}
+
+/**
  * Sets up IPC handlers specific to the edit dialog
  * @param originalSuggestion - The original AI suggestion
  * @param callbacks - Dialog callbacks
@@ -234,6 +455,13 @@ function cleanupEditDialogIpcHandlers(): void {
       ipcMain.removeHandler('validate-replacement');
       ipcMain.removeHandler('confirm-edit');
       ipcMain.removeHandler('cancel-edit');
+      
+      // Multi-suggestion specific handlers
+      ipcMain.removeHandler('get-suggestions-data');
+      ipcMain.removeHandler('confirm-suggestion');
+      ipcMain.removeHandler('reject-suggestion');
+      ipcMain.removeHandler('cancel-multi-edit');
+      
       ipcHandlersRegistered = false;
       console.log('Edit dialog IPC handlers cleaned up');
     } catch (error) {
@@ -474,6 +702,13 @@ export function globalCleanupEditDialogHandlers(): void {
     ipcMain.removeHandler('validate-replacement'); 
     ipcMain.removeHandler('confirm-edit');
     ipcMain.removeHandler('cancel-edit');
+    
+    // Multi-suggestion specific handlers
+    ipcMain.removeHandler('get-suggestions-data');
+    ipcMain.removeHandler('confirm-suggestion');
+    ipcMain.removeHandler('reject-suggestion');
+    ipcMain.removeHandler('cancel-multi-edit');
+    
     ipcHandlersRegistered = false;
     console.log('Global cleanup of edit dialog IPC handlers completed');
   } catch (error) {

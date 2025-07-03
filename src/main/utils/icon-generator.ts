@@ -96,4 +96,38 @@ export async function createIconFile(size: number = 64): Promise<string> {
   await fs.writeFile(iconPath, iconBuffer);
   
   return iconPath;
+}
+
+/**
+ * Saves the DryPrompt icon as actual files for app bundle usage
+ * Creates multiple sizes needed for proper macOS app icon display
+ * @returns Promise resolving when all icon files are saved
+ */
+export async function saveAppIconFiles(): Promise<void> {
+  const path = await import('path');
+  const fs = await import('fs').then(module => module.promises);
+  
+  // Common icon sizes for macOS apps
+  const iconSizes = [16, 32, 64, 128, 256, 512, 1024];
+  
+  // Create assets directory if it doesn't exist
+  const assetsDir = path.join(__dirname, '..', '..', 'renderer', 'assets');
+  
+  try {
+    await fs.access(assetsDir);
+  } catch {
+    await fs.mkdir(assetsDir, { recursive: true });
+  }
+  
+  // Generate PNG files for each size
+  for (const size of iconSizes) {
+    const icon = createThreeLineIcon(size);
+    const iconBuffer = icon.toPNG();
+    const iconPath = path.join(assetsDir, `icon-${size}.png`);
+    
+    await fs.writeFile(iconPath, iconBuffer);
+    console.log(`Saved icon: ${iconPath}`);
+  }
+  
+  console.log('All app icon files saved successfully');
 } 

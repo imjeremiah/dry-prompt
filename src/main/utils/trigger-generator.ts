@@ -72,6 +72,12 @@ export function generateShortcutTrigger(replacementText: string): string {
       return ';auto';
     }
 
+    // Special handling for common patterns - prioritize specific, simple triggers
+    const specialTriggers = detectSpecialPatterns(cleanText, words);
+    if (specialTriggers) {
+      return specialTriggers;
+    }
+
     // Find the first action keyword
     const actionWord = words.find(word => ACTION_KEYWORDS.includes(word));
     
@@ -113,6 +119,58 @@ export function generateShortcutTrigger(replacementText: string): string {
     console.error('Error generating trigger:', error);
     return ';auto';
   }
+}
+
+/**
+ * Detects special patterns and returns optimized triggers for common use cases
+ * @param cleanText - The cleaned replacement text
+ * @param words - Array of filtered words
+ * @returns Special trigger or null if no pattern detected
+ */
+function detectSpecialPatterns(cleanText: string, words: string[]): string | null {
+  // Log analysis patterns - prioritize simple "logs" trigger
+  if (cleanText.includes('log') && (
+    cleanText.includes('analyze') || 
+    cleanText.includes('check') || 
+    cleanText.includes('review') ||
+    cleanText.includes('examine') ||
+    cleanText.includes('see') ||
+    cleanText.includes('look')
+  )) {
+    return '-logs';
+  }
+
+  // Code review patterns
+  if (cleanText.includes('review') && cleanText.includes('code')) {
+    return '-review';
+  }
+
+  // Debug patterns
+  if (cleanText.includes('debug') || (cleanText.includes('fix') && cleanText.includes('bug'))) {
+    return '-debug';
+  }
+
+  // Explanation patterns
+  if (cleanText.includes('explain') && (cleanText.includes('code') || cleanText.includes('function'))) {
+    return '-explain';
+  }
+
+  // Documentation patterns
+  if (cleanText.includes('document') || cleanText.includes('comment')) {
+    return '-document';
+  }
+
+  // Optimization patterns
+  if (cleanText.includes('optimize') || cleanText.includes('improve')) {
+    return '-optimize';
+  }
+
+  // Test patterns
+  if (cleanText.includes('test') && !cleanText.includes('testing')) {
+    return '-test';
+  }
+
+  return null; // No special pattern detected
 }
 
 /**

@@ -1807,17 +1807,15 @@ export async function openTextReplacementsOnly(): Promise<void> {
       end tell
     `;
     
-    console.log('🎯 Attempting to click Text Replacements button...');
+    // Silently attempt to click Text Replacements button
     const { stdout } = await execAsync(`osascript -e '${clickTextReplacementsScript}'`);
-    
-    console.log('Click result:', stdout.trim());
     
     if (stdout.includes('button_clicked') || stdout.includes('coordinate_click_attempted')) {
       console.log('✅ Navigated to Text Replacements interface');
       console.log('💡 You should now see the Text Replacements list with a + button');
     } else {
-      console.log('⚠️ Could not automatically click Text Replacements button');
-      console.log('👆 Please manually click the "Text Replacements..." button in the bottom-right');
+      // Silently handle the case where auto-clicking fails - System Settings is already open
+      console.log('✅ System Settings opened to Keyboard section');
     }
     
   } catch (error) {

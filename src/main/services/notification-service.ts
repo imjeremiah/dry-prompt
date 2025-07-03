@@ -6,7 +6,6 @@
 import { Notification } from 'electron';
 import * as supabaseService from './supabase-service';
 import { createEditDialog } from './edit-dialog-window';
-import { createThreeLineIcon } from '../utils/icon-generator';
 
 // Interface for suggestion data
 interface SuggestionData {
@@ -24,26 +23,7 @@ interface NotificationCallbacks {
   onEdit?: (suggestion: SuggestionData) => void;
 }
 
-// Cache for the notification icon
-let notificationIcon: Electron.NativeImage | null = null;
 
-/**
- * Gets the branded icon for notifications, creating it if needed
- * @returns The notification icon
- */
-function getNotificationIcon(): Electron.NativeImage {
-  if (!notificationIcon) {
-    try {
-      notificationIcon = createThreeLineIcon(64);
-      console.log('Created notification icon successfully');
-    } catch (error) {
-      console.error('Failed to create notification icon:', error);
-      // Create a fallback icon if the main creation fails
-      notificationIcon = createThreeLineIcon(32);
-    }
-  }
-  return notificationIcon;
-}
 
 /**
  * Shows a native macOS notification for a text replacement suggestion
@@ -59,15 +39,11 @@ export async function showSuggestionNotification(
     throw new Error('Invalid suggestion data provided');
   }
 
-  // Get the branded icon for the notification
-  const icon = getNotificationIcon();
-
   const clusterInfo = suggestion.sourceTexts ? `Found ${suggestion.sourceTexts.length} similar prompts` : '';
 
   const notification = new Notification({
     title: 'DryPrompt - New Shortcut Suggestion',
     body: `${clusterInfo}\nSuggested: "${suggestion.trigger}" → "${truncateText(suggestion.replacement, 60)}"`,
-    icon, // Use the branded DryPrompt icon
     hasReply: false,
     actions: [
       {
@@ -143,6 +119,61 @@ async function handleOpenEditor(suggestion: SuggestionData, callbacks: Notificat
 }
 
 /**
+ * Handles opening the multi-suggestion editor for reviewing multiple suggestions
+ * @param suggestions - Array of suggestions to review
+ * @param callbacks - Notification callbacks
+ */
+async function handleOpenMultiSuggestionEditor(suggestions: SuggestionData[], callbacks: NotificationCallbacks): Promise<void> {
+  try {
+    console.log(`Opening multi-suggestion edit dialog for ${suggestions.length} suggestions`);
+    
+    // Import the multi-suggestion edit dialog
+    const { createMultiSuggestionEditDialog } = await import('./edit-dialog-window');
+    
+    // Open the multi-suggestion edit dialog
+    await createMultiSuggestionEditDialog(suggestions, {
+      onConfirm: async (editedSuggestion, suggestionIndex) => {
+        console.log(`User confirmed suggestion ${suggestionIndex + 1}: ${editedSuggestion.trigger}`);
+        
+        // Show instructions for manual copy/paste
+        showManualCopyInstructions(editedSuggestion.trigger, editedSuggestion.replacement);
+        
+        // Update status in Supabase
+        const originalSuggestion = suggestions[suggestionIndex];
+        if (originalSuggestion.suggestionId) {
+          await supabaseService.updateSuggestionStatus(originalSuggestion.suggestionId, 'accepted');
+        }
+        
+        callbacks.onAccepted?.(editedSuggestion);
+      },
+      onReject: async (suggestionIndex) => {
+        const rejectedSuggestion = suggestions[suggestionIndex];
+        console.log(`User rejected suggestion ${suggestionIndex + 1}: ${rejectedSuggestion.trigger}`);
+        
+        // Update status in Supabase
+        if (rejectedSuggestion.suggestionId) {
+          await supabaseService.updateSuggestionStatus(rejectedSuggestion.suggestionId, 'rejected');
+        }
+        
+        callbacks.onRejected?.(rejectedSuggestion);
+      },
+      onCancel: () => {
+        console.log(`User cancelled review for ${suggestions.length} suggestions`);
+        // Mark all as rejected
+        suggestions.forEach(suggestion => callbacks.onRejected?.(suggestion));
+      }
+    });
+    
+    // Notify that multi-edit was opened
+    suggestions.forEach(suggestion => callbacks.onEdit?.(suggestion));
+    
+  } catch (error) {
+    console.error('Error opening multi-suggestion edit dialog:', error);
+    showErrorNotification('Error opening multi-suggestion editor. Please try again.');
+  }
+}
+
+/**
  * Handles the "Dismiss" action
  * @param suggestion - The suggestion data
  * @param callbacks - Notification callbacks
@@ -162,11 +193,9 @@ async function handleDismiss(suggestion: SuggestionData, callbacks: Notification
  * @param replacement - The replacement text
  */
 function showManualCopyInstructions(trigger: string, replacement: string): void {
-  getNotificationIcon();
   const notification = new Notification({
     title: 'DryPrompt - Ready to Copy',
     body: `Trigger: "${trigger}"\nReplacement: "${truncateText(replacement, 50)}"\n\nOpening Text Replacements settings...`,
-    icon: notificationIcon, // Use the branded DryPrompt icon
     hasReply: false
   });
 
@@ -185,7 +214,6 @@ function showManualCopyInstructions(trigger: string, replacement: string): void 
       const fallbackNotification = new Notification({
         title: 'DryPrompt - Manual Setup',
         body: 'Please open System Settings > Keyboard > Text Replacements manually',
-        icon: notificationIcon,
         hasReply: false
       });
       fallbackNotification.show();
@@ -203,11 +231,9 @@ function showManualCopyInstructions(trigger: string, replacement: string): void 
  * @param message - The error message to display
  */
 function showErrorNotification(message: string): void {
-  getNotificationIcon();
   const notification = new Notification({
     title: 'DryPrompt - Error',
     body: message,
-    icon: notificationIcon, // Use the branded DryPrompt icon
     hasReply: false
   });
 
@@ -220,38 +246,74 @@ function showErrorNotification(message: string): void {
 }
 
 /**
- * Shows multiple suggestions in sequence with delays
+ * Shows multiple suggestions in a unified notification that opens a multi-suggestion edit dialog
  * @param suggestions - Array of suggestions to show
  * @param callbacks - Optional callbacks for user actions
- * @param delayMs - Delay between notifications in milliseconds
  */
 export async function showMultipleSuggestions(
   suggestions: SuggestionData[],
-  callbacks: NotificationCallbacks = {},
-  delayMs: number = 2000
+  callbacks: NotificationCallbacks = {}
 ): Promise<void> {
   if (!suggestions || suggestions.length === 0) {
     console.log('No suggestions to show');
     return;
   }
 
-  console.log(`Showing ${suggestions.length} suggestion notifications`);
-
-  for (let i = 0; i < suggestions.length; i++) {
-    const suggestion = suggestions[i];
-    
-    try {
-      await showSuggestionNotification(suggestion, callbacks);
-      
-      // Add delay between notifications (except for the last one)
-      if (i < suggestions.length - 1) {
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-      }
-    } catch (error) {
-      console.error(`Error showing suggestion ${i + 1}:`, error);
-      // Continue with other suggestions
-    }
+  if (suggestions.length === 1) {
+    // For single suggestions, use the regular notification
+    await showSuggestionNotification(suggestions[0], callbacks);
+    return;
   }
+
+  console.log(`Showing unified notification for ${suggestions.length} suggestions`);
+
+  // Create summary of all suggestions
+  const suggestionSummary = suggestions
+    .map(s => `"${s.trigger}"`)
+    .join(', ');
+
+  const notification = new Notification({
+    title: 'DryPrompt - Multiple Shortcut Suggestions',
+    body: `Found ${suggestions.length} new shortcuts:\n${truncateText(suggestionSummary, 80)}\n\nClick to review all suggestions`,
+    hasReply: false,
+    actions: [
+      {
+        type: 'button',
+        text: 'Review All'
+      }
+    ],
+    closeButtonText: 'Dismiss All'
+  });
+
+  // Handle user clicking action buttons or notification
+  const handleOpenMultiEditor = async () => {
+    console.log(`User wants to review ${suggestions.length} suggestions`);
+    await handleOpenMultiSuggestionEditor(suggestions, callbacks);
+  };
+
+  notification.on('action', async (event, index) => {
+    if (index === 0) { // Review All button
+      await handleOpenMultiEditor();
+    }
+  });
+
+  notification.on('click', async () => {
+    console.log(`Notification clicked for ${suggestions.length} suggestions - opening multi-editor`);
+    await handleOpenMultiEditor();
+  });
+
+  // Handle notification being closed without action (dismiss all)
+  notification.on('close', async () => {
+    console.log(`Notification dismissed for ${suggestions.length} suggestions`);
+    // Mark all as rejected
+    for (const suggestion of suggestions) {
+      await handleDismiss(suggestion, callbacks);
+    }
+  });
+
+  // Show the notification
+  notification.show();
+  console.log(`✅ Shown unified notification for ${suggestions.length} suggestions`);
 }
 
 /**
@@ -269,11 +331,9 @@ export function showAnalysisCompleteNotification(count: number): void {
     message = `Analysis complete. Found ${count} new shortcut suggestions!`;
   }
 
-  getNotificationIcon();
   const notification = new Notification({
     title: 'DryPrompt - Analysis Complete',
     body: message,
-    icon: notificationIcon, // Use the branded DryPrompt icon
     hasReply: false
   });
 
@@ -298,11 +358,9 @@ export function showMonitoringStartedNotification(captureMode?: 'uiohook' | 'fal
     body = 'DryPrompt is monitoring your Cursor usage with full keyboard capture enabled.';
   }
   
-  getNotificationIcon();
   const notification = new Notification({
     title: 'DryPrompt - Monitoring Active',
     body,
-    icon: notificationIcon, // Use the branded DryPrompt icon
     hasReply: false
   });
 
@@ -313,6 +371,8 @@ export function showMonitoringStartedNotification(captureMode?: 'uiohook' | 'fal
     notification.close();
   }, 3000);
 }
+
+
 
 /**
  * Truncates text to a specified length with ellipsis

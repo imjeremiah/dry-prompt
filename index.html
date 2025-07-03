@@ -37,6 +37,13 @@
       <div class="dialog-header">
         <h2 class="dialog-title">Edit Shortcut</h2>
         <p class="dialog-subtitle" id="dialog-subtitle">Customize the AI suggestion to fit your preferences</p>
+        
+        <!-- Multi-suggestion navigation (hidden by default) -->
+        <div class="multi-suggestion-nav" id="multi-suggestion-nav" style="display: none;">
+          <button type="button" class="nav-btn" id="prev-suggestion-btn" title="Previous suggestion">‹</button>
+          <span class="nav-indicator" id="nav-indicator">1 of 3</span>
+          <button type="button" class="nav-btn" id="next-suggestion-btn" title="Next suggestion">›</button>
+        </div>
       </div>
 
       <form id="edit-form">
@@ -94,6 +101,7 @@
 
         <div class="button-group">
           <button type="button" class="btn-secondary" id="cancel-btn">Cancel</button>
+          <button type="button" class="btn-reject" id="reject-btn" style="display: none;">Reject This</button>
           <button type="submit" class="btn-primary" id="create-btn" disabled>Create Shortcut</button>
         </div>
       </form>

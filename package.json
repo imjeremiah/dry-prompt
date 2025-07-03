@@ -15,7 +15,8 @@
     "build:mac": "electron-builder --mac",
     "build:dir": "electron-builder --dir",
     "dist": "npm run build",
-    "release": "npm run build && electron-builder --publish=always"
+    "release": "npm run build && electron-builder --publish=always",
+    "generate-icons": "node scripts/generate-app-icons.js"
   },
   "keywords": [
     "electron",

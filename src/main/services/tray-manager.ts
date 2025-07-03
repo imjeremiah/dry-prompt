@@ -145,13 +145,10 @@ function createContextMenu(
     openSettings: () => void;
     tryDemo: () => void;
     runAnalysis: () => void;
-    openShortcutEditor: () => void;
-    openConsole: () => void;
     quit: () => void;
     requestPermission?: () => void;
-    testShortcutCreation?: () => void;
-    debugPlist?: () => void;
     openTextReplacementsOnly: () => void;
+    openConsole: () => void;
   }
 ): Menu {
   const menuTemplate: Electron.MenuItemConstructorOptions[] = [
@@ -199,11 +196,6 @@ function createContextMenu(
         enabled: state === 'idle' && !isAnalyzing,
       },
       {
-        label: 'Open Shortcut Editor',
-        click: callbacks.openShortcutEditor,
-        enabled: state === 'idle',
-      },
-      {
         type: 'separator',
       },
       {
@@ -214,55 +206,10 @@ function createContextMenu(
     );
   }
 
-  // Debug tools
+  // Debug console (for troubleshooting)
   menuTemplate.push(
     {
       type: 'separator',
-    },
-    {
-      label: 'Test Shortcut Creation (Debug)',
-      click: callbacks.testShortcutCreation,
-      enabled: state === 'idle',
-    },
-    {
-      label: 'Test Dash Prefix (Debug)',
-      click: async () => {
-        const applescriptService = await import('../services/applescript-service');
-        const result = await applescriptService.testDashPrefixShortcut();
-        
-        console.log('🧪 DASH PREFIX TEST RESULTS:');
-        result.diagnostics.forEach(diagnostic => console.log(diagnostic));
-        
-        if (result.success) {
-          console.log('✅ Dash prefix test passed! Check System Settings manually.');
-        } else {
-          console.log('❌ Dash prefix test failed.');
-        }
-      },
-      enabled: state === 'idle',
-    },
-    {
-      label: 'Debug Plist (Debug)',
-      click: callbacks.debugPlist,
-      enabled: true,
-    },
-    {
-      label: 'Analyze Existing Shortcuts (Debug)',
-      click: async () => {
-        await analyzeExistingShortcuts();
-      }
-    },
-    {
-      label: 'Test Different Formats (Debug)',
-      click: async () => {
-        await testDifferentFormats();
-      }
-    },
-    {
-      label: 'Cleanup Test Shortcuts (Debug)',
-      click: async () => {
-        await cleanupTestShortcuts();
-      }
     },
     {
       label: 'Open Console (Debug)',
@@ -293,13 +240,10 @@ export function initializeTray(callbacks: {
   openSettings: () => void;
   tryDemo: () => void;
   runAnalysis: () => void;
-  openShortcutEditor: () => void;
-  openConsole: () => void;
   quit: () => void;
   requestPermission?: () => void;
-  testShortcutCreation?: () => void;
-  debugPlist?: () => void;
   openTextReplacementsOnly: () => void;
+  openConsole: () => void;
 }): boolean {
   if (tray) {
     console.log('Tray already initialized');
@@ -342,13 +286,10 @@ export function updateTray(
     openSettings: () => void;
     tryDemo: () => void;
     runAnalysis: () => void;
-    openShortcutEditor: () => void;
-    openConsole: () => void;
     quit: () => void;
     requestPermission?: () => void;
-    testShortcutCreation?: () => void;
-    debugPlist?: () => void;
     openTextReplacementsOnly: () => void;
+    openConsole: () => void;
   }
 ): void {
   if (!tray) {
@@ -396,13 +337,10 @@ export function forceUpdateTray(
     openSettings: () => void;
     tryDemo: () => void;
     runAnalysis: () => void;
-    openShortcutEditor: () => void;
-    openConsole: () => void;
     quit: () => void;
     requestPermission?: () => void;
-    testShortcutCreation?: () => void;
-    debugPlist?: () => void;
     openTextReplacementsOnly: () => void;
+    openConsole: () => void;
   }
 ): void {
   if (!tray) {
@@ -446,141 +384,4 @@ export function getTray(): Tray | null {
   return tray;
 }
 
-/**
- * Debug: Examine plist structure and content
- */
-async function debugPlist(): Promise<void> {
-  console.log('Debug Plist clicked - examining plist structure');
-  
-  try {
-    const { debugPlistStructure } = await import('../services/applescript-service');
-    const result = await debugPlistStructure();
-    console.log('Debug complete - check console for detailed output');
-    
-    console.log(`Debug complete - Found ${result.itemCount} shortcuts`);
-  } catch (error) {
-    console.error('Debug plist error:', error);
-  }
-}
-
-/**
- * Debug: Analyze existing shortcuts format
- */
-async function analyzeExistingShortcuts(): Promise<void> {
-  console.log('Analyze Existing Shortcuts clicked');
-  
-  try {
-    const { analyzeExistingShortcutFormat } = await import('../services/applescript-service');
-    const result = await analyzeExistingShortcutFormat();
-    
-    console.log('📊 EXISTING SHORTCUTS ANALYSIS:');
-    console.log(`Found ${result.systemShortcuts.length} total shortcuts`);
-    
-    if (result.hasSystemShortcuts) {
-      console.log('\n🔍 Shortcut Details:');
-      result.systemShortcuts.forEach((shortcut, index) => {
-        console.log(`\n[${index}] "${shortcut.replace}" → "${shortcut.with}"`);
-        console.log(`    Enabled: ${shortcut.on === 1 ? 'Yes' : 'No'}`);
-        console.log(`    Full structure: ${shortcut.fullStructure}`);
-      });
-      
-      // Look for patterns in successful shortcuts
-      const workingShortcuts = result.systemShortcuts.filter(s => 
-        !s.replace.includes('dryprompttest') && !s.replace.includes(';hi')
-      );
-      
-      if (workingShortcuts.length > 0) {
-        console.log('\n✅ Working shortcuts found for format comparison:');
-        workingShortcuts.forEach((shortcut, index) => {
-          console.log(`  [${index}] "${shortcut.replace}" → "${shortcut.with}"`);
-        });
-      } else {
-        console.log('\n⚠️  No working shortcuts found for format comparison');
-      }
-    } else {
-      console.log('No existing shortcuts found');
-    }
-    
-    result.diagnostics.forEach(diag => console.log(diag));
-    
-    console.log(`Analysis complete - Found ${result.systemShortcuts.length} shortcuts`);
-  } catch (error) {
-    console.error('Analyze existing shortcuts error:', error);
-  }
-}
-
-/**
- * Debug: Run comprehensive shortcut creation test
- */
-async function runShortcutCreationTest(): Promise<void> {
-  console.log('Test Shortcut Creation clicked - running comprehensive test');
-  
-  try {
-    const { testShortcutCreation } = await import('../services/applescript-service');
-    const result = await testShortcutCreation();
-    
-    if (result.success) {
-      console.log('Test Passed - Shortcut creation test completed successfully');
-    } else {
-      console.log('Test Failed - Shortcut creation failed. Check console for detailed diagnostics.');
-    }
-  } catch (error) {
-    console.error('Test shortcut creation error:', error);
-  }
-}
-
-/**
- * Debug: Test different shortcut formats
- */
-async function testDifferentFormats(): Promise<void> {
-  console.log('Test Different Formats clicked');
-  
-  try {
-    const { testDifferentShortcutFormats } = await import('../services/applescript-service');
-    const result = await testDifferentShortcutFormats();
-    
-    console.log('🧪 FORMAT TEST RESULTS:');
-    console.log(`Tested ${result.results.length} different formats`);
-    
-    result.results.forEach((test, index) => {
-      console.log(`\n[${index + 1}] ${test.format}:`);
-      console.log(`  Trigger: "${test.trigger}"`);
-      console.log(`  Replacement: "${test.replacement}"`);
-      console.log(`  Created in plist: ${test.created ? '✅' : '❌'}`);
-      if (test.error) {
-        console.log(`  Error: ${test.error}`);
-      }
-    });
-    
-    console.log('\n📋 Next steps:');
-    console.log('1. Check System Settings > Keyboard > Text Replacements');
-    console.log('2. Look for the test shortcuts created above');
-    console.log('3. Note which format(s) are actually visible in the UI');
-    
-    result.diagnostics.forEach(diag => console.log(diag));
-    
-    console.log(`Format Test Complete - Created ${result.results.length} test shortcuts`);
-  } catch (error) {
-    console.error('Test different formats error:', error);
-  }
-}
-
-/**
- * Debug: Clean up test shortcuts
- */
-async function cleanupTestShortcuts(): Promise<void> {
-  console.log('Cleanup Test Shortcuts clicked');
-  
-  try {
-    const { cleanupTestShortcuts } = await import('../services/applescript-service');
-    const result = await cleanupTestShortcuts();
-    
-    console.log('🧹 CLEANUP RESULTS:');
-    console.log(`Removed ${result.removedCount} test shortcuts`);
-    result.diagnostics.forEach(diag => console.log(diag));
-    
-    console.log(`Cleanup Complete - Removed ${result.removedCount} test shortcuts from plist`);
-  } catch (error) {
-    console.error('Cleanup test shortcuts error:', error);
-  }
-} 
+ 

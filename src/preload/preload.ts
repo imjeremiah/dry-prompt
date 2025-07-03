@@ -33,6 +33,18 @@ interface ElectronAPI {
   // Event listeners for edit dialog
   onLoadSuggestion: (callback: (suggestion: any) => void) => void;
   offLoadSuggestion: (callback: (suggestion: any) => void) => void;
+  
+  // Multi-suggestion dialog methods
+  onLoadMultiSuggestions: (callback: (data: { suggestions: any[]; count: number }) => void) => void;
+  confirmSuggestion: (data: { suggestionIndex: number; editedData: { trigger: string; replacement: string } }) => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+  rejectSuggestion: (suggestionIndex: number) => Promise<{
+    success: boolean;
+    error?: string;
+  }>;
+  cancelMultiEdit: () => Promise<{ success: boolean; error?: string }>;
 }
 
 // Expose protected methods that allow the renderer process to
@@ -112,6 +124,40 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   offLoadSuggestion: (callback: (suggestion: any) => void) => {
     ipcRenderer.removeListener('load-suggestion', callback);
+  },
+
+  /**
+   * Registers a callback for when multi-suggestion data is loaded into the dialog
+   * @param callback - Function to call when multi-suggestions are loaded
+   */
+  onLoadMultiSuggestions: (callback: (data: { suggestions: any[]; count: number }) => void) => {
+    ipcRenderer.on('load-multi-suggestions', (event, data) => callback(data));
+  },
+
+  /**
+   * Confirms a specific suggestion from the multi-suggestion dialog
+   * @param data - The suggestion index and edited data
+   * @returns Promise resolving to operation result
+   */
+  confirmSuggestion: (data: { suggestionIndex: number; editedData: { trigger: string; replacement: string } }) => {
+    return ipcRenderer.invoke('confirm-suggestion', data);
+  },
+
+  /**
+   * Rejects a specific suggestion from the multi-suggestion dialog
+   * @param suggestionIndex - Index of the suggestion to reject
+   * @returns Promise resolving to operation result
+   */
+  rejectSuggestion: (suggestionIndex: number) => {
+    return ipcRenderer.invoke('reject-suggestion', suggestionIndex);
+  },
+
+  /**
+   * Cancels the multi-suggestion edit dialog
+   * @returns Promise resolving to operation result
+   */
+  cancelMultiEdit: () => {
+    return ipcRenderer.invoke('cancel-multi-edit');
   }
 } as ElectronAPI);
 
