@@ -4,9 +4,9 @@
  */
 
 import { Notification } from 'electron';
-import * as applescriptService from './applescript-service';
 import * as supabaseService from './supabase-service';
 import { createEditDialog } from './edit-dialog-window';
+import { createThreeLineIcon } from '../utils/icon-generator';
 
 // Interface for suggestion data
 interface SuggestionData {
@@ -24,8 +24,29 @@ interface NotificationCallbacks {
   onEdit?: (suggestion: SuggestionData) => void;
 }
 
+// Cache for the notification icon
+let notificationIcon: Electron.NativeImage | null = null;
+
 /**
- * Shows a native macOS notification for a text replacement suggestion with three action options
+ * Gets the branded icon for notifications, creating it if needed
+ * @returns The notification icon
+ */
+function getNotificationIcon(): Electron.NativeImage {
+  if (!notificationIcon) {
+    try {
+      notificationIcon = createThreeLineIcon(64);
+      console.log('Created notification icon successfully');
+    } catch (error) {
+      console.error('Failed to create notification icon:', error);
+      // Create a fallback icon if the main creation fails
+      notificationIcon = createThreeLineIcon(32);
+    }
+  }
+  return notificationIcon;
+}
+
+/**
+ * Shows a native macOS notification for a text replacement suggestion
  * @param suggestion - The suggestion data to display
  * @param callbacks - Optional callbacks for user actions
  * @returns Promise resolving when notification is shown
@@ -38,29 +59,20 @@ export async function showSuggestionNotification(
     throw new Error('Invalid suggestion data provided');
   }
 
-  // Check if shortcut already exists before showing notification
-  try {
-    const exists = await applescriptService.checkShortcutExists(suggestion.trigger);
-    if (exists) {
-      console.log(`Shortcut ${suggestion.trigger} already exists, skipping notification`);
-      return;
-    }
-  } catch (error) {
-    console.warn('Could not check shortcut existence, showing notification anyway:', error);
-  }
+  // Get the branded icon for the notification
+  const icon = getNotificationIcon();
+
+  const clusterInfo = suggestion.sourceTexts ? `Found ${suggestion.sourceTexts.length} similar prompts` : '';
 
   const notification = new Notification({
     title: 'DryPrompt - New Shortcut Suggestion',
-    body: `Suggested shortcut: "${suggestion.trigger}"\nFor: "${truncateText(suggestion.replacement, 60)}"`,
+    body: `${clusterInfo}\nSuggested: "${suggestion.trigger}" → "${truncateText(suggestion.replacement, 60)}"`,
+    icon, // Use the branded DryPrompt icon
     hasReply: false,
     actions: [
       {
         type: 'button',
-        text: 'Create As-Is'
-      },
-      {
-        type: 'button',
-        text: 'Edit First'
+        text: 'Open Editor'
       }
     ],
     closeButtonText: 'Dismiss'
@@ -68,12 +80,9 @@ export async function showSuggestionNotification(
 
   // Handle user clicking action buttons
   notification.on('action', async (event, index) => {
-    if (index === 0) { // Create As-Is button
-      console.log(`User accepted suggestion as-is: ${suggestion.trigger}`);
-      await handleCreateAsIs(suggestion, callbacks);
-    } else if (index === 1) { // Edit First button
-      console.log(`User wants to edit suggestion: ${suggestion.trigger}`);
-      await handleEditFirst(suggestion, callbacks);
+    if (index === 0) { // Open Editor button
+      console.log(`User wants to review suggestion: ${suggestion.trigger}`);
+      await handleOpenEditor(suggestion, callbacks);
     }
   });
 
@@ -83,82 +92,43 @@ export async function showSuggestionNotification(
     await handleDismiss(suggestion, callbacks);
   });
 
-  // Handle notification click (treat as dismiss)
+  // Handle notification click - open editor instead of dismiss
   notification.on('click', async () => {
-    console.log(`Notification clicked for suggestion: ${suggestion.trigger}`);
-    await handleDismiss(suggestion, callbacks);
+    console.log(`Notification clicked for suggestion: ${suggestion.trigger} - opening editor`);
+    await handleOpenEditor(suggestion, callbacks);
   });
 
   // Show the notification
   notification.show();
-  console.log(`✅ Shown enhanced suggestion notification: ${suggestion.trigger}`);
+  console.log(`✅ Shown suggestion notification: ${suggestion.trigger}`);
 }
 
 /**
- * Handles the "Create As-Is" action
+ * Handles opening the editor for review and manual copy/paste
  * @param suggestion - The suggestion data
  * @param callbacks - Notification callbacks
  */
-async function handleCreateAsIs(suggestion: SuggestionData, callbacks: NotificationCallbacks): Promise<void> {
-  try {
-    const success = await applescriptService.createTextReplacement(
-      suggestion.trigger, 
-      suggestion.replacement
-    );
-    
-    if (success) {
-      showConfirmationNotification(suggestion.trigger);
-      
-      // Update status in Supabase if suggestionId is available
-      if (suggestion.suggestionId) {
-        await supabaseService.updateSuggestionStatus(suggestion.suggestionId, 'accepted');
-      }
-      
-      callbacks.onAccepted?.(suggestion);
-    } else {
-      showErrorNotification('Failed to create shortcut. Please try manually.');
-    }
-  } catch (error) {
-    console.error('Error creating text replacement:', error);
-    showErrorNotification('Error creating shortcut. Please check permissions.');
-  }
-}
-
-/**
- * Handles the "Edit First" action by opening the edit dialog
- * @param suggestion - The suggestion data
- * @param callbacks - Notification callbacks
- */
-async function handleEditFirst(suggestion: SuggestionData, callbacks: NotificationCallbacks): Promise<void> {
+async function handleOpenEditor(suggestion: SuggestionData, callbacks: NotificationCallbacks): Promise<void> {
   try {
     console.log(`Opening edit dialog for suggestion: ${suggestion.trigger}`);
     
-    // Open the edit dialog with the AI suggestion as starting point
+    // Open the edit dialog with the AI suggestion and cluster data
     await createEditDialog(suggestion, {
       onConfirm: async (editedSuggestion) => {
-        console.log(`User confirmed edited suggestion: ${editedSuggestion.trigger}`);
+        console.log(`User confirmed suggestion for manual copy/paste: ${editedSuggestion.trigger}`);
         
-        // Create the shortcut with user's edited values
-        const success = await applescriptService.createTextReplacement(
-          editedSuggestion.trigger,
-          editedSuggestion.replacement
-        );
+        // Show instructions for manual copy/paste
+        showManualCopyInstructions(editedSuggestion.trigger, editedSuggestion.replacement);
         
-        if (success) {
-          showConfirmationNotification(editedSuggestion.trigger);
-          
-          // Update status in Supabase with edited flag
-          if (suggestion.suggestionId) {
-            await supabaseService.updateSuggestionStatus(suggestion.suggestionId, 'accepted');
-          }
-          
-          callbacks.onAccepted?.(editedSuggestion);
-        } else {
-          showErrorNotification('Failed to create edited shortcut. Please try manually.');
+        // Update status in Supabase
+        if (suggestion.suggestionId) {
+          await supabaseService.updateSuggestionStatus(suggestion.suggestionId, 'accepted');
         }
+        
+        callbacks.onAccepted?.(editedSuggestion);
       },
       onCancel: () => {
-        console.log(`User cancelled edit dialog for: ${suggestion.trigger}`);
+        console.log(`User cancelled review for: ${suggestion.trigger}`);
         // Treat cancel as a rejection
         callbacks.onRejected?.(suggestion);
       }
@@ -168,7 +138,7 @@ async function handleEditFirst(suggestion: SuggestionData, callbacks: Notificati
     
   } catch (error) {
     console.error('Error opening edit dialog:', error);
-    showErrorNotification('Error opening edit dialog. Please try again.');
+    showErrorNotification('Error opening editor. Please try again.');
   }
 }
 
@@ -187,22 +157,45 @@ async function handleDismiss(suggestion: SuggestionData, callbacks: Notification
 }
 
 /**
- * Shows a confirmation notification when a shortcut is successfully created
+ * Shows instructions for manual copy/paste to system text replacements
  * @param trigger - The trigger that was created
+ * @param replacement - The replacement text
  */
-function showConfirmationNotification(trigger: string): void {
-  const confirmation = new Notification({
-    title: 'DryPrompt - Shortcut Created',
-    body: `Shortcut "${trigger}" is now active! You can use it in any text field.`,
+function showManualCopyInstructions(trigger: string, replacement: string): void {
+  getNotificationIcon();
+  const notification = new Notification({
+    title: 'DryPrompt - Ready to Copy',
+    body: `Trigger: "${trigger}"\nReplacement: "${truncateText(replacement, 50)}"\n\nOpening Text Replacements settings...`,
+    icon: notificationIcon, // Use the branded DryPrompt icon
     hasReply: false
   });
 
-  confirmation.show();
+  notification.show();
   
-  // Auto-close after 3 seconds
+  // Automatically open Text Replacements settings window
+  setTimeout(async () => {
+    try {
+      const applescriptService = await import('./applescript-service');
+      await applescriptService.openTextReplacementsOnly();
+      console.log('Automatically opened Text Replacements settings for user');
+    } catch (error) {
+      console.error('Failed to auto-open Text Replacements settings:', error);
+      
+      // Show a follow-up notification if automatic opening fails
+      const fallbackNotification = new Notification({
+        title: 'DryPrompt - Manual Setup',
+        body: 'Please open System Settings > Keyboard > Text Replacements manually',
+        icon: notificationIcon,
+        hasReply: false
+      });
+      fallbackNotification.show();
+    }
+  }, 1000); // Small delay to let the first notification be seen
+  
+  // Auto-close after 6 seconds (reduced since settings will be opening)
   setTimeout(() => {
-    confirmation.close();
-  }, 3000);
+    notification.close();
+  }, 6000);
 }
 
 /**
@@ -210,17 +203,19 @@ function showConfirmationNotification(trigger: string): void {
  * @param message - The error message to display
  */
 function showErrorNotification(message: string): void {
-  const error = new Notification({
+  getNotificationIcon();
+  const notification = new Notification({
     title: 'DryPrompt - Error',
     body: message,
+    icon: notificationIcon, // Use the branded DryPrompt icon
     hasReply: false
   });
 
-  error.show();
+  notification.show();
   
   // Auto-close after 5 seconds
   setTimeout(() => {
-    error.close();
+    notification.close();
   }, 5000);
 }
 
@@ -274,9 +269,11 @@ export function showAnalysisCompleteNotification(count: number): void {
     message = `Analysis complete. Found ${count} new shortcut suggestions!`;
   }
 
+  getNotificationIcon();
   const notification = new Notification({
     title: 'DryPrompt - Analysis Complete',
     body: message,
+    icon: notificationIcon, // Use the branded DryPrompt icon
     hasReply: false
   });
 
@@ -301,9 +298,11 @@ export function showMonitoringStartedNotification(captureMode?: 'uiohook' | 'fal
     body = 'DryPrompt is monitoring your Cursor usage with full keyboard capture enabled.';
   }
   
+  getNotificationIcon();
   const notification = new Notification({
     title: 'DryPrompt - Monitoring Active',
     body,
+    icon: notificationIcon, // Use the branded DryPrompt icon
     hasReply: false
   });
 

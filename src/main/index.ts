@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, Notification } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import * as appController from './services/app-controller';
@@ -6,6 +6,7 @@ import * as trayManager from './services/tray-manager';
 import * as monitoringService from './services/monitoring-service';
 import * as permissionService from './services/permission-service';
 import { createEditDialog, globalCleanupEditDialogHandlers } from './services/edit-dialog-window';
+import { createThreeLineIcon } from './utils/icon-generator';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -56,24 +57,6 @@ const createConfigWindow = () => {
     return { action: 'deny' };
   });
 };
-
-/**
- * Shows a test notification
- */
-function showTestNotification(): void {
-  try {
-    const { Notification } = require('electron');
-    const testNotification = new Notification({
-      title: 'DryPrompt Test',
-      body: 'This is a test notification. If you see this, notifications are working!',
-      hasReply: false
-    });
-    testNotification.show();
-    console.log('✅ Test notification shown');
-  } catch (error) {
-    console.error('❌ Test notification failed:', error);
-  }
-}
 
 /**
  * Opens the debug console for the config window
@@ -157,52 +140,187 @@ async function initializeApplication(): Promise<void> {
       console.log('Settings clicked - opening configuration window');
       createConfigWindow();
     },
-    addSampleData: async () => {
-      console.log('Adding sample data for testing...');
+    tryDemo: async () => {
+      console.log('Try Demo clicked - adding sample data for demonstration...');
       try {
-        await monitoringService.addSampleData();
-        console.log('✅ Sample data added');
-      } catch (error) {
-        console.error('Error adding sample data:', error);
-      }
-    },
-    clearLogAndAddTestData: async () => {
-      console.log('Clearing log and adding fresh test data...');
-      try {
+        // First clear any existing log to ensure clean demo
         const loggingService = await import('./services/logging-service');
         await loggingService.clearLog();
-        console.log('✅ Log cleared');
+        console.log('✅ Log cleared for clean demo');
         
+        // Add sample data
         await monitoringService.addSampleData();
-        console.log('✅ Fresh test data added');
+        console.log('✅ Demo data added successfully');
       } catch (error) {
-        console.error('Error clearing and adding test data:', error);
+        console.error('Error setting up demo:', error);
       }
     },
-    analyzeNow: async () => {
-      console.log('Analyze Now clicked - starting manual analysis');
+    runAnalysis: async () => {
+      console.log('Run Analysis clicked - starting manual analysis');
       try {
         await appController.triggerManualAnalysis();
       } catch (error) {
         console.error('Error triggering manual analysis:', error);
       }
     },
-    testNotification: showTestNotification,
-    testEditDialog: () => {
-      console.log('Test Edit Dialog clicked');
+    openShortcutEditor: () => {
+      console.log('Open Shortcut Editor clicked - opening manual creation dialog');
       try {
-        const testSuggestion = {
-          trigger: ';explaincode',
-          replacement: 'Explain the following code:',
-          sourceTexts: ['explain this code', 'explain the code', 'what does this code do'],
-          confidence: 0.85
-        };
-        createEditDialog(testSuggestion, {
-          onConfirm: (edited) => console.log('Test edit confirmed:', edited),
-          onCancel: () => console.log('Test edit cancelled')
+        // Create an empty suggestion for manual entry
+        createEditDialog(null, {
+          onConfirm: async (editedSuggestion) => {
+            console.log('Manual shortcut created:', editedSuggestion);
+            
+            // Create the shortcut using AppleScript
+            const applescriptService = await import('./services/applescript-service');
+            const success = await applescriptService.createShortcutWithWorkingFormat(
+              editedSuggestion.trigger,
+              editedSuggestion.replacement
+            );
+            
+            // Get the branded icon for notifications
+            let icon: Electron.NativeImage;
+            try {
+              icon = createThreeLineIcon(64);
+            } catch (error) {
+              console.error('Failed to create notification icon:', error);
+              icon = createThreeLineIcon(32); // Fallback to smaller size
+            }
+            
+            if (success) {
+              // Show success notification
+              const notification = new Notification({
+                title: 'DryPrompt - Shortcut Created',
+                body: `Shortcut "${editedSuggestion.trigger}" created successfully!`,
+                icon, // Use the branded DryPrompt icon
+                hasReply: false
+              });
+              notification.show();
+            } else {
+              // Show error notification
+              const notification = new Notification({
+                title: 'DryPrompt - Error',
+                body: 'Failed to create shortcut. Please try manually.',
+                icon, // Use the branded DryPrompt icon
+                hasReply: false
+              });
+              notification.show();
+            }
+          },
+          onCancel: () => console.log('Manual shortcut creation cancelled')
         });
       } catch (error) {
-        console.error('Error testing edit dialog:', error);
+        console.error('Error opening shortcut editor:', error);
+      }
+    },
+    testShortcutCreation: async () => {
+      console.log('Test Shortcut Creation clicked - running comprehensive test');
+      try {
+        const applescriptService = await import('./services/applescript-service');
+        const testResult = await applescriptService.testShortcutCreation();
+        
+        // Get the branded icon for notifications
+        let icon: Electron.NativeImage;
+        try {
+          icon = createThreeLineIcon(64);
+        } catch (error) {
+          console.error('Failed to create notification icon:', error);
+          icon = createThreeLineIcon(32); // Fallback to smaller size
+        }
+        
+        // Show test results in notification
+        if (testResult.success) {
+          const notification = new Notification({
+            title: 'DryPrompt - Test Successful',
+            body: `Shortcut creation working! Method: ${testResult.method}\nCheck System Preferences > Keyboard > Text for test shortcut.`,
+            icon,
+            hasReply: false
+          });
+          notification.show();
+        } else {
+          const notification = new Notification({
+            title: 'DryPrompt - Test Failed',
+            body: 'Shortcut creation failed. Check console for detailed diagnostics.',
+            icon,
+            hasReply: false
+          });
+          notification.show();
+        }
+        
+        // Log detailed diagnostics to console
+        console.log('\n🧪 SHORTCUT CREATION TEST RESULTS:');
+        testResult.diagnostics.forEach(diagnostic => console.log(diagnostic));
+        
+      } catch (error) {
+        console.error('Error running shortcut creation test:', error);
+        
+        const icon = createThreeLineIcon(64);
+        const notification = new Notification({
+          title: 'DryPrompt - Test Error',
+          body: 'Error running test. Check console for details.',
+          icon,
+          hasReply: false
+        });
+        notification.show();
+      }
+    },
+    debugPlist: async () => {
+      console.log('Debug Plist clicked - examining plist structure');
+      try {
+        const applescriptService = await import('./services/applescript-service');
+        const plistDebug = await applescriptService.debugPlistStructure();
+        
+        // Get the branded icon for notifications
+        let icon: Electron.NativeImage;
+        try {
+          icon = createThreeLineIcon(64);
+        } catch (error) {
+          console.error('Failed to create notification icon:', error);
+          icon = createThreeLineIcon(32); // Fallback to smaller size
+        }
+        
+        // Show summary in notification
+        const notification = new Notification({
+          title: 'DryPrompt - Plist Debug',
+          body: `Array exists: ${plistDebug.hasArray}\nItems: ${plistDebug.itemCount}\nCheck console for details.`,
+          icon,
+          hasReply: false
+        });
+        notification.show();
+        
+        // Log detailed information to console
+        console.log('\n🔍 PLIST DEBUG RESULTS:');
+        console.log(`Array exists: ${plistDebug.hasArray}`);
+        console.log(`Item count: ${plistDebug.itemCount}`);
+        
+        if (plistDebug.items.length > 0) {
+          console.log('\nItems found:');
+          plistDebug.items.forEach(item => {
+            console.log(`  [${item.index}] replace: "${item.replace}" → with: "${item.with}" (on: ${item.on})`);
+            if (item.structure.length < 200) {
+              console.log(`    Structure: ${item.structure.replace(/\n/g, ' ')}`);
+            }
+          });
+        } else {
+          console.log('No items found in array');
+        }
+        
+        if (plistDebug.rawContent && plistDebug.rawContent !== 'Array does not exist') {
+          console.log('\nRaw plist content:');
+          console.log(plistDebug.rawContent);
+        }
+        
+      } catch (error) {
+        console.error('Error debugging plist:', error);
+        
+        const icon = createThreeLineIcon(64);
+        const notification = new Notification({
+          title: 'DryPrompt - Debug Error',
+          body: 'Error debugging plist. Check console for details.',
+          icon,
+          hasReply: false
+        });
+        notification.show();
       }
     },
     openConsole: openDebugConsole,
@@ -210,7 +328,81 @@ async function initializeApplication(): Promise<void> {
       console.log('Quit clicked');
       app.quit();
     },
-    requestPermission: requestAccessibilityPermission
+    requestPermission: requestAccessibilityPermission,
+    openTextReplacements: async () => {
+      console.log('Open Text Replacements clicked - opening System Settings');
+      try {
+        const applescriptService = await import('./services/applescript-service');
+        await applescriptService.openTextReplacementsForManualSetup();
+        
+        // Get the branded icon for notifications
+        let icon: Electron.NativeImage;
+        try {
+          icon = createThreeLineIcon(64);
+        } catch (error) {
+          console.error('Failed to create notification icon:', error);
+          icon = createThreeLineIcon(32); // Fallback to smaller size
+        }
+        
+        // Show helpful notification
+        const notification = new Notification({
+          title: 'DryPrompt - Text Replacements',
+          body: 'System Settings opened. Click the + button to add your shortcuts manually.',
+          icon,
+          hasReply: false
+        });
+        notification.show();
+        
+      } catch (error) {
+        console.error('Error opening Text Replacements:', error);
+        
+        const icon = createThreeLineIcon(64);
+        const notification = new Notification({
+          title: 'DryPrompt - Error',
+          body: 'Could not open System Settings. Please open manually: System Settings > Keyboard > Text Replacements',
+          icon,
+          hasReply: false
+        });
+        notification.show();
+      }
+    },
+    openTextReplacementsOnly: async () => {
+      console.log('Text Replacements... clicked - opening System Settings');
+      try {
+        const applescriptService = await import('./services/applescript-service');
+        await applescriptService.openTextReplacementsOnly();
+        
+        // Get the branded icon for notifications
+        let icon: Electron.NativeImage;
+        try {
+          icon = createThreeLineIcon(64);
+        } catch (error) {
+          console.error('Failed to create notification icon:', error);
+          icon = createThreeLineIcon(32); // Fallback to smaller size
+        }
+        
+        // Show simple notification
+        const notification = new Notification({
+          title: 'DryPrompt - Text Replacements',
+          body: 'System Settings opened. Click + to add text replacements manually.',
+          icon,
+          hasReply: false
+        });
+        notification.show();
+        
+      } catch (error) {
+        console.error('Error opening Text Replacements:', error);
+        
+        const icon = createThreeLineIcon(64);
+        const notification = new Notification({
+          title: 'DryPrompt - Error',
+          body: 'Could not open System Settings. Please open manually.',
+          icon,
+          hasReply: false
+        });
+        notification.show();
+      }
+    }
   };
 
   // Initialize tray

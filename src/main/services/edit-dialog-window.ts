@@ -39,12 +39,12 @@ let ipcHandlersRegistered = false;
 
 /**
  * Creates and displays an edit dialog for customizing a suggestion
- * @param suggestion - The AI-generated suggestion to edit
+ * @param suggestion - The AI-generated suggestion to edit (optional - null for manual creation)
  * @param callbacks - Callbacks for user actions
  * @returns Promise resolving when dialog is created
  */
 export async function createEditDialog(
-  suggestion: SuggestionData, 
+  suggestion: SuggestionData | null, 
   callbacks: EditDialogCallbacks
 ): Promise<void> {
   // Force cleanup of any existing edit dialog and handlers
@@ -60,6 +60,9 @@ export async function createEditDialog(
   // Wait a moment for cleanup to complete
   await new Promise(resolve => setTimeout(resolve, 100));
 
+  const isManualCreation = suggestion === null;
+  const windowTitle = isManualCreation ? 'Create Shortcut - DryPrompt' : 'Edit Shortcut - DryPrompt';
+
   currentEditWindow = new BrowserWindow({
     width: 520,
     height: 600,
@@ -68,7 +71,7 @@ export async function createEditDialog(
     maximizable: false,
     fullscreenable: false,
     alwaysOnTop: true,
-    title: 'Edit Shortcut - DryPrompt',
+    title: windowTitle,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -100,19 +103,25 @@ export async function createEditDialog(
 
   currentEditWindow.webContents.on('dom-ready', () => {
     console.log('Edit dialog DOM ready - populating form immediately');
-    populateFormWithSuggestion(suggestion);
+    if (suggestion) {
+      populateFormWithSuggestion(suggestion);
+    }
   });
 
   // Send the initial suggestion data to the renderer
   currentEditWindow.webContents.once('did-finish-load', () => {
     console.log('Edit dialog finished loading - sending suggestion data');
-    populateFormWithSuggestion(suggestion);
+    if (suggestion) {
+      populateFormWithSuggestion(suggestion);
+    }
   });
 
   // Backup method - populate after a delay regardless of events
   setTimeout(() => {
-    console.log('Backup timer - force populating form after 1 second');
-    populateFormWithSuggestion(suggestion);
+    if (suggestion) {
+      console.log('Backup timer - force populating form after 1 second');
+      populateFormWithSuggestion(suggestion);
+    }
   }, 1000);
 
   // Clean up when window is closed
@@ -126,13 +135,14 @@ export async function createEditDialog(
     return { action: 'deny' };
   });
 
-  console.log(`Edit dialog created for suggestion: ${suggestion.trigger}`);
+  console.log(`Edit dialog created for ${isManualCreation ? 'manual creation' : 'suggestion: ' + suggestion!.trigger}`);
 
-  // Enable DevTools for debugging
-  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-    console.log('Opening DevTools for edit dialog debugging');
-    currentEditWindow.webContents.openDevTools();
-  }
+  // Only enable DevTools in development mode when explicitly debugging
+  // Removed automatic DevTools opening to prevent console from appearing
+  // if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+  //   console.log('Opening DevTools for edit dialog debugging');
+  //   currentEditWindow.webContents.openDevTools();
+  // }
 }
 
 /**
@@ -141,7 +151,7 @@ export async function createEditDialog(
  * @param callbacks - Dialog callbacks
  */
 function setupEditDialogIpcHandlers(
-  originalSuggestion: SuggestionData, 
+  originalSuggestion: SuggestionData | null, 
   callbacks: EditDialogCallbacks
 ): void {
   // Clean up any existing handlers first to prevent registration conflicts
@@ -165,18 +175,19 @@ function setupEditDialogIpcHandlers(
       try {
         // Create the edited suggestion object
         const editedSuggestion: SuggestionData = {
-          ...originalSuggestion,
           trigger: editedData.trigger.trim(),
-          replacement: editedData.replacement.trim()
+          replacement: editedData.replacement.trim(),
+          sourceTexts: originalSuggestion?.sourceTexts || [],
+          confidence: originalSuggestion?.confidence || 1.0,
+          suggestionId: originalSuggestion?.suggestionId
         };
 
         console.log(`User confirmed edit: ${editedSuggestion.trigger}`);
         callbacks.onConfirm(editedSuggestion);
         
-        // Close the dialog
-        if (currentEditWindow && !currentEditWindow.isDestroyed()) {
-          currentEditWindow.close();
-        }
+        // Keep the dialog open so user can copy from it while Text Replacements window is open
+        // User can close it manually when done
+        console.log('Edit dialog kept open for copying - user can close manually when done');
 
         return { success: true };
       } catch (error) {
@@ -188,7 +199,7 @@ function setupEditDialogIpcHandlers(
     // Handle dialog cancellation
     ipcMain.handle('cancel-edit', async () => {
       try {
-        console.log(`User cancelled edit for: ${originalSuggestion.trigger}`);
+        console.log(`User cancelled edit for: ${originalSuggestion?.trigger}`);
         callbacks.onCancel();
         
         // Close the dialog
@@ -247,10 +258,10 @@ async function validateTrigger(trigger: string): Promise<ValidationResult> {
     };
   }
 
-  if (!trigger.startsWith(';')) {
+  if (!trigger.startsWith('-') && !trigger.startsWith(';') && !trigger.startsWith('_')) {
     return {
       isValid: false,
-      message: 'Trigger must start with a semicolon (;)',
+      message: 'Trigger must start with a dash (-), semicolon (;), or underscore (_)',
       type: 'error'
     };
   }
@@ -274,7 +285,7 @@ async function validateTrigger(trigger: string): Promise<ValidationResult> {
   if (!isValidTrigger(trigger)) {
     return {
       isValid: false,
-      message: 'Trigger can only contain letters and semicolon',
+      message: 'Trigger can only contain letters and valid prefix characters',
       type: 'error'
     };
   }
@@ -285,20 +296,6 @@ async function validateTrigger(trigger: string): Promise<ValidationResult> {
       message: 'This trigger might conflict with common shortcuts',
       type: 'warning'
     };
-  }
-
-  // Check if shortcut already exists
-  try {
-    const exists = await applescriptService.checkShortcutExists(trigger);
-    if (exists) {
-      return {
-        isValid: false,
-        message: 'This shortcut already exists in your system',
-        type: 'error'
-      };
-    }
-  } catch (error) {
-    console.warn('Could not check shortcut existence during validation:', error);
   }
 
   return {
@@ -422,7 +419,7 @@ function populateFormWithSuggestion(suggestion: SuggestionData): void {
       }
       
              if (previewDemo) {
-         previewDemo.innerHTML = 'Type <strong>${suggestion.trigger}</strong> <span class="preview-arrow">→</span> Get "${suggestion.replacement.substring(0, 50)}${suggestion.replacement.length > 50 ? '...' : ''}"';
+         previewDemo.innerHTML = 'Type <strong>${suggestion.trigger}</strong> <span class="preview-arrow">→</span> Get "${suggestion.replacement}"';
          console.log('Updated preview');
        }
       

@@ -176,6 +176,26 @@ class ConfigManager {
 
 // Edit Dialog Manager
 class EditDialog {
+  private form: HTMLFormElement | null;
+  private triggerInput: HTMLInputElement | null;
+  private replacementInput: HTMLTextAreaElement | null;
+  private createBtn: HTMLButtonElement | null;
+  private cancelBtn: HTMLButtonElement | null;
+  private previewDemo: HTMLElement | null;
+  private characterCount: HTMLElement | null;
+  private dialogTitle: HTMLHeadingElement | null;
+  private dialogSubtitle: HTMLParagraphElement | null;
+  private sourcePromptsSection: HTMLElement | null;
+  private sourcePromptsSubtitle: HTMLElement | null;
+  private sourcePromptsList: HTMLElement | null;
+  private copyTriggerBtn: HTMLButtonElement | null;
+  private copyReplacementBtn: HTMLButtonElement | null;
+  
+  private triggerValid: boolean;
+  private replacementValid: boolean;
+  private originalSuggestion: any;
+  private isManualCreation: boolean;
+
   constructor() {
     console.log('EditDialog constructor started');
     
@@ -186,6 +206,13 @@ class EditDialog {
     this.cancelBtn = document.getElementById('cancel-btn') as HTMLButtonElement;
     this.previewDemo = document.getElementById('preview-demo');
     this.characterCount = document.getElementById('character-count');
+    this.dialogTitle = document.querySelector('.dialog-title') as HTMLHeadingElement;
+    this.dialogSubtitle = document.getElementById('dialog-subtitle') as HTMLParagraphElement;
+    this.sourcePromptsSection = document.getElementById('source-prompts-section');
+    this.sourcePromptsSubtitle = document.getElementById('source-prompts-subtitle');
+    this.sourcePromptsList = document.getElementById('source-prompts-list');
+    this.copyTriggerBtn = document.getElementById('copy-trigger-btn') as HTMLButtonElement;
+    this.copyReplacementBtn = document.getElementById('copy-replacement-btn') as HTMLButtonElement;
 
     // Debug element availability
     console.log('Form elements found:', {
@@ -195,15 +222,24 @@ class EditDialog {
       createBtn: !!this.createBtn,
       cancelBtn: !!this.cancelBtn,
       previewDemo: !!this.previewDemo,
-      characterCount: !!this.characterCount
+      characterCount: !!this.characterCount,
+      dialogTitle: !!this.dialogTitle,
+      dialogSubtitle: !!this.dialogSubtitle,
+      sourcePromptsSection: !!this.sourcePromptsSection,
+      sourcePromptsSubtitle: !!this.sourcePromptsSubtitle,
+      sourcePromptsList: !!this.sourcePromptsList,
+      copyTriggerBtn: !!this.copyTriggerBtn,
+      copyReplacementBtn: !!this.copyReplacementBtn
     });
 
     this.triggerValid = false;
     this.replacementValid = false;
     this.originalSuggestion = null;
+    this.isManualCreation = true; // Default to manual creation
 
     this.setupEventListeners();
     this.setupSuggestionListener();
+    this.updateUIForManualCreation(); // Set up UI for manual creation by default
     
     console.log('EditDialog constructor completed');
   }
@@ -223,6 +259,10 @@ class EditDialog {
 
     // Update preview when trigger changes
     this.triggerInput?.addEventListener('input', () => this.updatePreview());
+
+    // Copy button functionality
+    this.copyTriggerBtn?.addEventListener('click', () => this.copyTrigger());
+    this.copyReplacementBtn?.addEventListener('click', () => this.copyReplacement());
 
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
@@ -249,8 +289,24 @@ class EditDialog {
     console.log('Loading suggestion into form:', suggestion);
     
     if (!suggestion) {
-      console.error('No suggestion data provided');
+      console.log('No suggestion provided - keeping manual creation mode');
       return;
+    }
+    
+    this.isManualCreation = false;
+    this.originalSuggestion = suggestion;
+    
+    // Update UI for editing mode
+    if (this.dialogTitle) {
+      this.dialogTitle.textContent = 'Edit Shortcut';
+    }
+    
+    if (this.dialogSubtitle) {
+      this.dialogSubtitle.textContent = 'Customize the AI suggestion to fit your preferences';
+    }
+    
+    if (this.createBtn) {
+      this.createBtn.textContent = 'Create Shortcut';
     }
     
     // If elements aren't available yet, try again after a short delay
@@ -279,6 +335,9 @@ class EditDialog {
       console.error('Replacement input element not found');
     }
     
+    // Load source prompts if available
+    this.loadSourcePrompts(suggestion);
+    
     // Trigger validation and updates
     this.validateTrigger();
     this.validateReplacement();
@@ -290,6 +349,45 @@ class EditDialog {
     this.triggerInput?.select();
     
     console.log('Suggestion loaded successfully');
+  }
+
+  loadSourcePrompts(suggestion) {
+    console.log('Loading source prompts:', suggestion.sourceTexts);
+    
+    if (!suggestion.sourceTexts || !Array.isArray(suggestion.sourceTexts) || suggestion.sourceTexts.length === 0) {
+      console.log('No source prompts available - hiding source prompts section');
+      if (this.sourcePromptsSection) {
+        this.sourcePromptsSection.style.display = 'none';
+      }
+      return;
+    }
+    
+    // Show the source prompts section
+    if (this.sourcePromptsSection) {
+      this.sourcePromptsSection.style.display = 'block';
+    }
+    
+    // Update subtitle with count
+    if (this.sourcePromptsSubtitle) {
+      const count = suggestion.sourceTexts.length;
+      this.sourcePromptsSubtitle.textContent = `These ${count} similar prompt${count === 1 ? '' : 's'} led to this suggestion:`;
+    }
+    
+    // Populate the list
+    if (this.sourcePromptsList) {
+      this.sourcePromptsList.innerHTML = '';
+      
+      suggestion.sourceTexts.forEach((prompt, index) => {
+        const promptItem = document.createElement('div');
+        promptItem.className = 'source-prompt-item';
+        promptItem.textContent = prompt;
+        this.sourcePromptsList.appendChild(promptItem);
+      });
+      
+      console.log(`Populated ${suggestion.sourceTexts.length} source prompts`);
+    } else {
+      console.error('Source prompts list element not found');
+    }
   }
 
   async validateTrigger() {
@@ -372,7 +470,7 @@ class EditDialog {
 
     if (this.previewDemo) {
       if (trigger && replacement) {
-        this.previewDemo.innerHTML = `Type <strong>${trigger}</strong> <span class="preview-arrow">→</span> Get "${replacement.substring(0, 50)}${replacement.length > 50 ? '...' : ''}"`;
+        this.previewDemo.innerHTML = `Type <strong>${trigger}</strong> <span class="preview-arrow">→</span> Get "${replacement}"`;
       } else {
         this.previewDemo.innerHTML = 'Type your trigger <span class="preview-arrow">→</span> Get your replacement text';
       }
@@ -403,8 +501,26 @@ class EditDialog {
       
       if (!result.success) {
         alert(`Error: ${result.error || 'Failed to create shortcut'}`);
+      } else {
+        // Success! Update UI to show completion but keep window open for copying
+        if (this.createBtn) {
+          this.createBtn.textContent = 'Ready to Copy!';
+          this.createBtn.disabled = true;
+          this.createBtn.style.backgroundColor = '#34c759'; // Green color
+        }
+        
+        // Add a helpful message
+        if (this.dialogSubtitle) {
+          this.dialogSubtitle.textContent = 'Text Replacements opened! Copy the values below and close this window when done.';
+          this.dialogSubtitle.style.color = '#34c759';
+        }
+        
+        // Select the trigger text for easy copying
+        if (this.triggerInput) {
+          this.triggerInput.select();
+        }
       }
-      // Window will be closed by the main process on success
+      // Window will NOT be closed automatically - user closes when done
     } catch (error) {
       console.error('Error confirming edit:', error);
       alert('An unexpected error occurred. Please try again.');
@@ -425,10 +541,140 @@ class EditDialog {
   setLoading(loading) {
     if (loading) {
       document.body.classList.add('loading');
-      if (this.createBtn) this.createBtn.textContent = 'Creating...';
+      if (this.createBtn && this.createBtn.textContent !== 'Ready to Copy!') {
+        this.createBtn.textContent = 'Creating...';
+      }
     } else {
       document.body.classList.remove('loading');
-      if (this.createBtn) this.createBtn.textContent = 'Create Shortcut';
+      // Only revert button text if it's not in the "Ready to Copy!" state
+      if (this.createBtn && this.createBtn.textContent !== 'Ready to Copy!') {
+        this.createBtn.textContent = 'Create Shortcut';
+      }
+    }
+  }
+
+  updateUIForManualCreation() {
+    console.log('Setting up UI for manual shortcut creation');
+    
+    if (this.dialogTitle) {
+      this.dialogTitle.textContent = 'Create Shortcut';
+    }
+    
+    if (this.dialogSubtitle) {
+      this.dialogSubtitle.textContent = 'Create a custom keyboard shortcut for your frequently used text';
+    }
+    
+    if (this.createBtn) {
+      this.createBtn.textContent = 'Create Shortcut';
+    }
+    
+    // Set placeholder values for manual creation
+    if (this.triggerInput) {
+      this.triggerInput.placeholder = '-myshortcut';
+      this.triggerInput.value = '';
+    }
+    
+    if (this.replacementInput) {
+      this.replacementInput.placeholder = 'Enter the text that will replace your trigger...';
+      this.replacementInput.value = '';
+    }
+    
+    // Hide source prompts section for manual creation
+    if (this.sourcePromptsSection) {
+      this.sourcePromptsSection.style.display = 'none';
+    }
+    
+    this.isManualCreation = true;
+    console.log('UI updated for manual creation');
+  }
+
+  async copyTrigger() {
+    const trigger = this.triggerInput?.value.trim() || '';
+    
+    if (!trigger) {
+      this.showCopyFeedback(this.copyTriggerBtn, false, 'No trigger to copy');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(trigger);
+      this.showCopyFeedback(this.copyTriggerBtn, true, 'Trigger copied!');
+      console.log(`Copied trigger to clipboard: "${trigger}"`);
+    } catch (error) {
+      console.error('Failed to copy trigger:', error);
+      // Fallback for older browsers or permission issues
+      this.fallbackCopy(trigger);
+      this.showCopyFeedback(this.copyTriggerBtn, true, 'Trigger copied!');
+    }
+  }
+
+  async copyReplacement() {
+    const replacement = this.replacementInput?.value.trim() || '';
+    
+    if (!replacement) {
+      this.showCopyFeedback(this.copyReplacementBtn, false, 'No replacement to copy');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(replacement);
+      this.showCopyFeedback(this.copyReplacementBtn, true, 'Replacement copied!');
+      console.log(`Copied replacement to clipboard: "${replacement.substring(0, 50)}..."`);
+    } catch (error) {
+      console.error('Failed to copy replacement:', error);
+      // Fallback for older browsers or permission issues
+      this.fallbackCopy(replacement);
+      this.showCopyFeedback(this.copyReplacementBtn, true, 'Replacement copied!');
+    }
+  }
+
+  showCopyFeedback(button: HTMLButtonElement | null, success: boolean, message: string) {
+    if (!button) return;
+
+    // Store original text and title
+    const originalText = button.textContent;
+    const originalTitle = button.title;
+    
+    // Update button appearance
+    if (success) {
+      button.classList.add('copied');
+      button.textContent = '✓';
+      button.title = message;
+    } else {
+      button.style.backgroundColor = '#ff453a';
+      button.textContent = '✗';
+      button.title = message;
+    }
+    
+    // Reset after delay
+    setTimeout(() => {
+      button.classList.remove('copied');
+      button.textContent = originalText;
+      button.title = originalTitle;
+      if (!success) {
+        button.style.backgroundColor = '';
+      }
+    }, 1500);
+  }
+
+  fallbackCopy(text: string) {
+    // Fallback method for copying text
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    
+    try {
+      document.execCommand('copy');
+      console.log('Fallback copy successful');
+    } catch (error) {
+      console.error('Fallback copy failed:', error);
+    } finally {
+      document.body.removeChild(textArea);
     }
   }
 }

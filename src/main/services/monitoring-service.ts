@@ -80,6 +80,8 @@ interface MonitoringState {
   keyboardListenerActive: boolean;
   currentTextBuffer: string;
   lastKeypressTime: number;
+  screenRecordingErrorLogged: boolean;
+  lastErrorLogTime?: number;
 }
 
 // Configuration constants
@@ -98,7 +100,8 @@ let state: MonitoringState = {
   isTargetActive: false,
   keyboardListenerActive: false,
   currentTextBuffer: '',
-  lastKeypressTime: 0
+  lastKeypressTime: 0,
+  screenRecordingErrorLogged: false
 };
 
 /**
@@ -128,15 +131,29 @@ async function isTargetProcessRunning(): Promise<boolean> {
   } catch (error: any) {
     // Handle permission errors gracefully
     const stdout = error?.stdout || '';
+    const stderr = error?.stderr || '';
+    
+    if (stdout.includes('screen recording permission') || stderr.includes('screen recording permission')) {
+      // Only log this error once, not repeatedly
+      if (!state.screenRecordingErrorLogged) {
+        console.log('Screen recording permission required - monitoring paused');
+        state.screenRecordingErrorLogged = true;
+      }
+      return false;
+    }
+    
     if (stdout.includes('accessibility permission')) {
       console.log('Accessibility permission required - monitoring paused');
       return false;
     }
-    if (stdout.includes('screen recording permission')) {
-      console.log('Screen recording permission required - monitoring paused');
-      return false;
+    
+    // For other errors, only log occasionally to avoid spam
+    const now = Date.now();
+    if (!state.lastErrorLogTime || (now - state.lastErrorLogTime) > 30000) { // Log at most once per 30 seconds
+      console.error('Error checking for target process:', error);
+      state.lastErrorLogTime = now;
     }
-    console.error('Error checking for target process:', error);
+    
     return false;
   }
 }
@@ -172,8 +189,28 @@ async function isTargetWindowActive(): Promise<boolean> {
     
     return false;
     
-  } catch (error) {
-    console.error('Error checking active window:', error);
+  } catch (error: any) {
+    // Handle permission errors gracefully (same logic as isTargetProcessRunning)
+    const stdout = error?.stdout || '';
+    const stderr = error?.stderr || '';
+    
+    if (stdout.includes('screen recording permission') || stderr.includes('screen recording permission')) {
+      // Don't log repeatedly - already logged in isTargetProcessRunning
+      return false;
+    }
+    
+    if (stdout.includes('accessibility permission')) {
+      // Don't log repeatedly
+      return false;
+    }
+    
+    // For other errors, only log occasionally to avoid spam
+    const now = Date.now();
+    if (!state.lastErrorLogTime || (now - state.lastErrorLogTime) > 30000) { // Log at most once per 30 seconds
+      console.error('Error checking active window:', error);
+      state.lastErrorLogTime = now;
+    }
+    
     return false;
   }
 }

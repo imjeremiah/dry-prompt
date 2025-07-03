@@ -244,6 +244,54 @@ textarea:focus {
   position: relative;
 }
 
+.input-with-copy {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+
+.input-with-copy input,
+.input-with-copy textarea {
+  flex: 1;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: none;
+}
+
+.copy-btn {
+  background: var(--button-background, #007aff);
+  color: white;
+  border: 1px solid var(--button-background, #007aff);
+  border-left: none;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-top-right-radius: 6px;
+  border-bottom-right-radius: 6px;
+  padding: 8px 12px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  white-space: nowrap;
+}
+
+.copy-btn:hover {
+  background: var(--button-hover, #0056cc);
+  border-color: var(--button-hover, #0056cc);
+}
+
+.copy-btn:active {
+  transform: scale(0.95);
+}
+
+.copy-btn.copied {
+  background: var(--success-color, #34c759);
+  border-color: var(--success-color, #34c759);
+}
+
 .validation-message {
   font-size: 11px;
   margin-top: 6px;
@@ -317,12 +365,68 @@ textarea:focus {
   padding: 8px 12px;
   border-radius: 4px;
   border: 1px solid var(--border-color, #d1d1d6);
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-height: 120px;
+  overflow-y: auto;
 }
 
 .preview-arrow {
   color: var(--button-background, #007aff);
   margin: 0 8px;
   font-weight: 600;
+}
+
+/* Source Prompts Section */
+.source-prompts-section {
+  background: var(--preview-bg, #f8f9fa);
+  border: 1px solid var(--border-color, #d1d1d6);
+  border-radius: 6px;
+  padding: 12px;
+  margin: 16px 0;
+}
+
+.source-prompts-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--secondary-text-color, #666666);
+  text-transform: uppercase;
+  margin-bottom: 4px;
+  letter-spacing: 0.5px;
+}
+
+.source-prompts-subtitle {
+  font-size: 12px;
+  color: var(--secondary-text-color, #666666);
+  margin-bottom: 12px;
+}
+
+.source-prompts-list {
+  max-height: 120px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color, #d1d1d6);
+  border-radius: 4px;
+  background: var(--input-background, #ffffff);
+}
+
+.source-prompt-item {
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 11px;
+  color: var(--text-color);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-color, #d1d1d6);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  line-height: 1.3;
+}
+
+.source-prompt-item:last-child {
+  border-bottom: none;
+}
+
+.source-prompt-item:nth-child(odd) {
+  background: var(--preview-bg, #f8f9fa);
 }
 
 .button-group {
@@ -395,5 +499,10 @@ textarea:focus {
   
   textarea:focus {
     box-shadow: 0 0 0 3px rgba(0, 102, 204, 0.2);
+  }
+
+  .copy-btn:hover {
+    background: var(--button-hover, #0052a3);
+    border-color: var(--button-hover, #0052a3);
   }
 }

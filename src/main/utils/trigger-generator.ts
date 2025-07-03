@@ -78,8 +78,8 @@ export function generateShortcutTrigger(replacementText: string): string {
     // Find the first subject keyword
     const subjectWord = words.find(word => SUBJECT_KEYWORDS.includes(word));
     
-    // Generate trigger based on available keywords
-    let trigger = ';';
+    // Generate trigger based on available keywords (using dash prefix for better macOS compatibility)
+    let trigger = '-';
     
     if (actionWord && subjectWord) {
       // Ideal case: action + subject
@@ -125,8 +125,8 @@ export function isValidTrigger(trigger: string): boolean {
     return false;
   }
 
-  // Must start with semicolon
-  if (!trigger.startsWith(';')) {
+  // Must start with dash, semicolon, or underscore (common prefixes that work)
+  if (!trigger.startsWith('-') && !trigger.startsWith(';') && !trigger.startsWith('_')) {
     return false;
   }
 
@@ -135,8 +135,8 @@ export function isValidTrigger(trigger: string): boolean {
     return false;
   }
 
-  // Must contain only letters and semicolon
-  if (!/^;[a-z]+$/.test(trigger)) {
+  // Must contain only letters and valid prefix characters
+  if (!/^[-;_][a-z]+$/.test(trigger)) {
     return false;
   }
 
@@ -159,15 +159,19 @@ export function generateAlternativeTriggers(replacementText: string): string[] {
       word.length > 2 && !STOP_WORDS.includes(word)
     );
 
-    // Generate variations
+    // Generate variations with different prefixes
     if (words.length >= 2) {
-      // First word + last word
+      // First word + last word (try multiple prefixes)
+      alternatives.push(`-${words[0]}${words[words.length - 1]}`);
       alternatives.push(`;${words[0]}${words[words.length - 1]}`);
+      alternatives.push(`_${words[0]}${words[words.length - 1]}`);
       
       // First letter of each word
       const initials = words.map(w => w[0]).join('');
       if (initials.length >= 3) {
+        alternatives.push(`-${initials}`);
         alternatives.push(`;${initials}`);
+        alternatives.push(`_${initials}`);
       }
     }
 
@@ -176,7 +180,9 @@ export function generateAlternativeTriggers(replacementText: string): string[] {
     if (firstWord && firstWord.length > 4) {
       const abbreviated = firstWord.replace(/[aeiou]/g, '');
       if (abbreviated.length >= 3) {
+        alternatives.push(`-${abbreviated}`);
         alternatives.push(`;${abbreviated}`);
+        alternatives.push(`_${abbreviated}`);
       }
     }
 

@@ -36,20 +36,25 @@
     <div id="edit-dialog-view" class="dialog-container" style="display: none;">
       <div class="dialog-header">
         <h2 class="dialog-title">Edit Shortcut</h2>
-        <p class="dialog-subtitle">Customize the AI suggestion to fit your preferences</p>
+        <p class="dialog-subtitle" id="dialog-subtitle">Customize the AI suggestion to fit your preferences</p>
       </div>
 
       <form id="edit-form">
         <div class="form-group">
           <label for="trigger-input">Shortcut Trigger</label>
           <div class="input-container" id="trigger-container">
-            <input 
-              type="text" 
-              id="trigger-input" 
-              placeholder=";explaincode"
-              spellcheck="false"
-              autocomplete="off"
-            >
+            <div class="input-with-copy">
+              <input 
+                type="text" 
+                id="trigger-input" 
+                placeholder="-explaincode"
+                spellcheck="false"
+                autocomplete="off"
+              >
+              <button type="button" class="copy-btn" id="copy-trigger-btn" title="Copy trigger">
+                ⧉
+              </button>
+            </div>
             <div class="validation-message" id="trigger-validation"></div>
           </div>
         </div>
@@ -57,11 +62,16 @@
         <div class="form-group">
           <label for="replacement-input">Replacement Text</label>
           <div class="input-container" id="replacement-container">
-            <textarea 
-              id="replacement-input" 
-              placeholder="Enter the text that will replace the trigger..."
-              spellcheck="true"
-            ></textarea>
+            <div class="input-with-copy">
+              <textarea 
+                id="replacement-input" 
+                placeholder="Enter the text that will replace the trigger..."
+                spellcheck="true"
+              ></textarea>
+              <button type="button" class="copy-btn" id="copy-replacement-btn" title="Copy replacement text">
+                ⧉
+              </button>
+            </div>
             <div class="validation-message" id="replacement-validation"></div>
             <div class="character-count" id="character-count">0 characters</div>
           </div>
@@ -71,6 +81,14 @@
           <div class="preview-title">Preview</div>
           <div class="preview-demo" id="preview-demo">
             Type your trigger <span class="preview-arrow">→</span> Get your replacement text
+          </div>
+        </div>
+
+        <div class="source-prompts-section" id="source-prompts-section" style="display: none;">
+          <div class="source-prompts-title">Source Prompts</div>
+          <div class="source-prompts-subtitle" id="source-prompts-subtitle">These similar prompts led to this suggestion:</div>
+          <div class="source-prompts-list" id="source-prompts-list">
+            <!-- Source prompts will be populated here -->
           </div>
         </div>
 
