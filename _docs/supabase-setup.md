@@ -7,7 +7,7 @@ To complete the Phase 2 implementation, you need to set up the database tables i
 1. **Open Supabase Dashboard:**
    - Go to [https://supabase.com/dashboard](https://supabase.com/dashboard)
    - Log into your account
-   - Select your project: `***REMOVED***`
+   - Select your project: `sjtotruadqvkymauksbs`
 
 2. **Navigate to SQL Editor:**
    - Click on "SQL Editor" in the left sidebar
@@ -27,13 +27,12 @@ If you prefer using the CLI, install PostgreSQL tools first:
 brew install postgresql
 
 # Then run the setup script
-PGPASSWORD="***REMOVED***" psql \
-  -h ***REMOVED*** \
+PGPASSWORD="YOUR_SUPABASE_PASSWORD" psql \
+  -h YOUR_SUPABASE_HOST \
   -p 6543 \
-  -U postgres.***REMOVED*** \
+  -U postgres.YOUR_PROJECT_ID \
   -d postgres \
   -f scripts/setup-supabase-tables.sql
-```
 
 ## What This Creates
 
@@ -81,4 +80,5 @@ Once the database is set up:
 2. **Test the workflow**: Use "Add Sample Data" and then "Analyze Now" from the menu bar
 3. **Verify data storage**: Check the Supabase dashboard to see if suggestions and analysis results are being stored
 
-The application will continue to work even if Supabase is not available (it will log warnings and continue with local functionality only). 
+The application will continue to work even if Supabase is not available (it will log warnings and continue with local functionality only).
+```
